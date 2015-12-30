@@ -449,14 +449,18 @@ public class PipelineOrchestrator extends Thread {
                 boolean isDDL    = isDDL(querySQL);
                 boolean isCOMMIT = isCOMMIT(querySQL);
                 String dbName = ((QueryEvent) event).getDatabaseName().toString();
-
-                if (isReplicant(dbName) && (isDDL || isCOMMIT)) {
-                    eventIsTracked = true;
+                if (isReplicant(dbName)) {
+                    if ((isDDL || isCOMMIT)) {
+                        eventIsTracked = true;
+                    }
+                    else {
+                        if (!querySQL.equals("BEGIN")) {
+                            LOGGER.warn("Received non-DDL, non-COMMIT, non-BEGIN statement: " + querySQL);
+                        }
+                    }
                 }
                 else {
-                    if (!querySQL.equals("BEGIN")) {
-                        LOGGER.warn("Received non-DDL, non-COMMIT, non-BEGIN statement: " + querySQL);
-                    }
+                    LOGGER.info("non-replicant db event for db: " + dbName);
                 }
                 break;
 
