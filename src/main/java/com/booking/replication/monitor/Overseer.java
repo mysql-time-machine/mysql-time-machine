@@ -190,13 +190,6 @@ public class Overseer extends Thread {
            byte[] b = message.getBytes();
            DatagramPacket  dp = new DatagramPacket(b , b.length , host , port);
            sock.send(dp);
-
-           // reply
-           byte[] buffer = new byte[1000];
-           DatagramPacket reply = new DatagramPacket(buffer, buffer.length);
-           sock.setSoTimeout(50);
-           sock.receive(reply);
-
         }
         catch(IOException e) {
             System.err.println("IOException " + e);
