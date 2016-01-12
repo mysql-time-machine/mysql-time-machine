@@ -347,7 +347,7 @@ public class PipelineOrchestrator extends Thread {
 
     }
 
-    public boolean isDDL(String querySQL) {
+        public boolean isDDL(String querySQL) {
 
         long tStart = System.currentTimeMillis();
         boolean isDDL;
@@ -455,6 +455,7 @@ public class PipelineOrchestrator extends Thread {
                     }
                     else {
                         if (!querySQL.equals("BEGIN")) {
+                            eventIsTracked = false;
                             LOGGER.warn("Received non-DDL, non-COMMIT, non-BEGIN statement: " + querySQL);
                         }
                     }

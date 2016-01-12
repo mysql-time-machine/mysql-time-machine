@@ -37,7 +37,8 @@ public class EventAugmenter {
 
     // public CurrentTransactionMetadata currentTransactionMetadata;
 
-    private ActiveSchemaVersion activeSchemaVersion = null;
+    private ActiveSchemaVersion activeSchemaVersion;
+    private final Configuration configuration;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(EventAugmenter.class);
 
@@ -52,6 +53,7 @@ public class EventAugmenter {
 
         //currentTransactionMetadata = new CurrentTransactionMetadata();
         activeSchemaVersion = new ActiveSchemaVersion(replicatorConfiguration);
+        configuration = replicatorConfiguration;
     }
 
     /**
@@ -86,12 +88,16 @@ public class EventAugmenter {
         // 2. transition to the new schema
         String schemaTransitionDDL = this.getDDLFromEvent(event);
         if (schemaTransitionDDL != null) {
-            futureSchemaVersion = activeSchemaVersion.applyDDL(schemaTransitionDDL);
+            // since active schema has a postfix, we need to make sure that queires that
+            // specify schema explictly are rewriten so they work properly on active schema
+            String activeSchemaTransitionDDL = rewriteActiveSchemaName(schemaTransitionDDL);
+
+            futureSchemaVersion = activeSchemaVersion.applyDDL(activeSchemaTransitionDDL);
             if (futureSchemaVersion != null) {
                 this.activeSchemaVersion = futureSchemaVersion;
             }
             else {
-                throw new SchemaTransitionException("Failed to calculateAndPropagateChanges statement " + schemaTransitionDDL);
+                throw new SchemaTransitionException("Failed to calculateAndPropagateChanges with DDL statement: " + activeSchemaTransitionDDL);
             }
         }
         else {
@@ -120,12 +126,24 @@ public class EventAugmenter {
 
         if (event instanceof QueryEvent) {
             String sql = ((QueryEvent) event).getSql().toString();
-            System.out.println("valid Query Event");
             return sql;
         }
         else {
             throw new SchemaTransitionException("Not a valid query event!");
         }
+    }
+
+    public String rewriteActiveSchemaName(String query) {
+
+        String replicantDbName = this.configuration.getReplicantSchemaName();
+        String activeSchemaName = this.configuration.getActiveSchemaDB();
+
+        String dbNamePattern = "( " + replicantDbName + ".)|(`" + replicantDbName + "`.)";
+        String newDbNameTerm = " `" + activeSchemaName + "`.";
+
+        query = query.replaceAll(dbNamePattern, newDbNameTerm);
+
+        return query;
     }
 
     /**
@@ -186,6 +204,10 @@ public class EventAugmenter {
         // getValue schema for that table from activeSchemaVersion
         TableSchema tableSchema = activeSchemaVersion.getActiveSchemaTables().get(tableName);
 
+        if (tableSchema == null) {
+            throw new TableMapException("Table schema not initialized for table " + tableName + ". Cant proceed.");
+        }
+
         AugmentedRowsEvent augEventGroup = new AugmentedRowsEvent();
 
         int numberOfColumns = writeRowsEvent.getColumnCount().intValue();
@@ -232,6 +254,11 @@ public class EventAugmenter {
 
         // getValue schema for that table from activeSchemaVersion
         TableSchema tableSchema = activeSchemaVersion.getActiveSchemaTables().get(tableName);
+
+        // TODO: refactor
+        if (tableSchema == null) {
+            throw new TableMapException("Table schema not initialized for table " + tableName + ". Cant proceed.");
+        }
 
         int numberOfColumns = writeRowsEvent.getColumnCount().intValue();
 
@@ -281,11 +308,13 @@ public class EventAugmenter {
         // table name
         String tableName = caller.currentTransactionMetadata.getTableNameFromID(deleteRowsEvent.getTableId());
 
-        LOGGER.info("tableName => " + tableName);
-
         // getValue schema for that table from activeSchemaVersion
         TableSchema tableSchema = activeSchemaVersion.getActiveSchemaTables().get(tableName);
 
+        // TODO: refactor
+        if (tableSchema == null) {
+            throw new TableMapException("Table schema not initialized for table " + tableName + ". Cant proceed.");
+        }
         AugmentedRowsEvent augEventGroup = new AugmentedRowsEvent();
 
         int numberOfColumns = deleteRowsEvent.getColumnCount().intValue();
@@ -329,6 +358,11 @@ public class EventAugmenter {
 
         // getValue schema for that table from activeSchemaVersion
         TableSchema tableSchema = activeSchemaVersion.getActiveSchemaTables().get(tableName);
+
+        // TODO: refactor
+        if (tableSchema == null) {
+            throw new TableMapException("Table schema not initialized for table " + tableName + ". Cant proceed.");
+        }
 
         AugmentedRowsEvent augEventGroup = new AugmentedRowsEvent();
 
@@ -374,6 +408,11 @@ public class EventAugmenter {
 
         // getValue schema for that table from activeSchemaVersion
         TableSchema tableSchema = activeSchemaVersion.getActiveSchemaTables().get(tableName);
+
+        // TODO: refactor
+        if (tableSchema == null) {
+            throw new TableMapException("Table schema not initialized for table " + tableName + ". Cant proceed.");
+        }
 
         AugmentedRowsEvent augEventGroup = new AugmentedRowsEvent();
 
@@ -423,6 +462,11 @@ public class EventAugmenter {
 
         // getValue schema for that table from activeSchemaVersion
         TableSchema tableSchema = activeSchemaVersion.getActiveSchemaTables().get(tableName);
+
+        // TODO: refactor
+        if (tableSchema == null) {
+            throw new TableMapException("Table schema not initialized for table " + tableName + ". Cant proceed.");
+        }
 
         AugmentedRowsEvent augEventGroup = new AugmentedRowsEvent();
 
