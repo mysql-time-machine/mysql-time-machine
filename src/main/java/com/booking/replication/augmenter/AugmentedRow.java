@@ -8,6 +8,7 @@ import com.google.code.or.binlog.BinlogEventV4Header;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.security.InvalidParameterException;
 import java.util.*;
 
 /**
@@ -45,16 +46,23 @@ public class AugmentedRow {
             String columnName,
             String valueBefore,
             String valueAfter
-    ) {
-        //Map<String,Object> columnData = new HashMap<String, Object>();
+    ) throws InvalidParameterException, TableMapException {
 
-        //columnData.put("value_before", valueBefore);
-        //columnData.put("value_after", valueAfter);
-
-        //eventColumns.put(columnName, columnData);
-
-        eventColumns.get(columnName).put("value_before", valueBefore);
-        eventColumns.get(columnName).put("value_after", valueAfter);
+        if (columnName == null) {
+            throw new InvalidParameterException("columnName can not be null");
+        }
+        else if (eventColumns.get(columnName) == null) {
+            String errorMessage = "Missing data slot for { table => " + this.getTableName() + ", columnName => " + columnName;
+            errorMessage += "\n Known columns for table " + this.getTableName() + " are:";
+            for (String c : eventColumns.keySet()) {
+                errorMessage += "\n\t" + c;
+            }
+            throw new TableMapException(errorMessage);
+        }
+        else {
+            eventColumns.get(columnName).put("value_before", valueBefore);
+            eventColumns.get(columnName).put("value_after", valueAfter);
+        }
     }
 
     public void addColumnDataForInsert(
