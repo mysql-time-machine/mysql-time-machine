@@ -28,10 +28,10 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class Replicator {
 
-    private final Configuration       configuration;
-    private final BinlogEventProducer binlogEventProducer;
+    private final Configuration        configuration;
+    private final BinlogEventProducer  binlogEventProducer;
     private final PipelineOrchestrator pipelineOrchestrator;
-    private final Overseer overseer;
+    private final Overseer             overseer;
 
     private static final int MAX_QUEUE_SIZE = Constants.MAX_QUEUE_SIZE;
 
@@ -64,57 +64,63 @@ public class Replicator {
 
     // start()
     public void start() throws Exception {
-        try {
 
-            // Shutdown hook
-            Runtime.getRuntime().addShutdownHook(new Thread() {
-                @Override
-                public void run() {
-
-                    // Overseer
-                    try {
-                        overseer.stopMonitoring();
-                        overseer.join();
-                        LOGGER.info("Overseer thread succesfully stopped");
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
-
-                    // Producer
-                    try {
-                        // let open replicator stop its own threads
-                        binlogEventProducer.stop(1000, TimeUnit.MILLISECONDS);
-                        if (!binlogEventProducer.getOr().isRunning()) {
-                            LOGGER.info("Successfully stoped open replicator");
-                        }
-                        else {
-                            LOGGER.warn("Failed to stop open replicator");
-                        }
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-
-                    // Consumer
-                    try {
-                        pipelineOrchestrator.setRunning(false);
-                        pipelineOrchestrator.join();
-                        LOGGER.info("Consumer thread succesfully stopped");
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
+        // Shutdown hook
+        Runtime.getRuntime().addShutdownHook(new Thread() {
+            @Override
+            public void run() {
+                LOGGER.info("Executing replicator shutdown hook...");
+                // Overseer
+                try {
+                    LOGGER.info("Stopping Overseer...");
+                    overseer.stopMonitoring();
+                    overseer.join();
+                    LOGGER.info("Overseer thread successfully stopped");
+                } catch (InterruptedException e) {
+                    LOGGER.error("Interrupted.", e);
+                } catch (Exception e) {
+                    LOGGER.error("Failed to stop Overseer", e);
                 }
-            });
+                // Producer
+                try {
+                    // let open replicator stop its own threads
+                    LOGGER.info("Stopping Producer...");
+                    binlogEventProducer.stop(1000, TimeUnit.MILLISECONDS);
+                    if (!binlogEventProducer.getOr().isRunning()) {
+                        LOGGER.info("Successfully stopped Producer thread");
+                    }
+                    else {
+                        throw new Exception("Failed to stop Producer thread");
+                    }
+                } catch (InterruptedException e) {
+                    LOGGER.error("Interrupted.", e);
+                } catch (Exception e) {
+                    LOGGER.error("Failed to stop Producer thread", e);
+                }
+                // Consumer
+                try {
+                    LOGGER.info("Stopping Pipeline Orchestrator...");
+                    pipelineOrchestrator.setRunning(false);
+                    pipelineOrchestrator.join();
+                    LOGGER.info("Pipeline Orchestrator successfully stopped");
+                } catch (InterruptedException e) {
+                    LOGGER.error("Interrupted.", e);
+                } catch (Exception e) {
+                    LOGGER.error("Failed to stop Pipeline Orchestrator", e);
+                }
+            }
+        });
 
-            // Start up
-            binlogEventProducer.start();
-            pipelineOrchestrator.start();
-            overseer.start();
+        // Start up
+        binlogEventProducer.start();
+        pipelineOrchestrator.start();
+        overseer.start();
 
-        } catch (Exception e) {
-            e.printStackTrace();
+        while (!pipelineOrchestrator.isReplicatorShutdownRequested()) {
+            Thread.sleep(1000);
         }
+
+        System.exit(0);
     }
 
     // stop()

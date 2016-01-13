@@ -50,7 +50,10 @@ public class PipelineOrchestrator extends Thread {
 
     public CurrentTransactionMetadata currentTransactionMetadata;
 
-    private boolean running = false;
+    private volatile boolean running = false;
+
+    private volatile boolean replicatorShutdownRequested = false;
+
     private static final Logger LOGGER = LoggerFactory.getLogger(PipelineOrchestrator.class);
 
     public final Configuration configuration;
@@ -61,17 +64,12 @@ public class PipelineOrchestrator extends Thread {
 
     public long consumerTimeM1 = 0;
     public long consumerTimeM1_WriteV2 = 0;
-
     public long consumerTimeM2 = 0;
-
     public long consumerTimeM3 = 0;
-
     public long consumerTimeM4 = 0;
-
     public long consumerTimeM5 = 0;
 
     public long eventCounter = 0;
-
 
    /**
     * fakeMicrosecondCounter: this is a special feature that
@@ -86,6 +84,14 @@ public class PipelineOrchestrator extends Thread {
     * main purpose of this counter.
     */
     private static long fakeMicrosecondCounter = 0;
+
+    public void requestReplicatorShutdown(){
+        this.replicatorShutdownRequested = true;
+    }
+
+    public boolean isReplicatorShutdownRequested() {
+        return replicatorShutdownRequested;
+    }
 
     public static void setFakeMicrosecondCounter(Long fakeMicrosecondCounter) {
         PipelineOrchestrator.fakeMicrosecondCounter = fakeMicrosecondCounter;
@@ -176,11 +182,17 @@ public class PipelineOrchestrator extends Thread {
                     Thread.sleep(5000);
                 }
             } catch (InterruptedException e) {
-                e.printStackTrace();
+                LOGGER.error("InterruptedException, requesting replicator shutdown...", e);
+                requestReplicatorShutdown();
             } catch (TableMapException e) {
-                e.printStackTrace();
+                LOGGER.error("TableMapException, requesting replicator shutdown...",e);
+                requestReplicatorShutdown();
             } catch (IOException e) {
-                e.printStackTrace();
+                LOGGER.error("IOException, requesting replicator shutdown...",e);
+                requestReplicatorShutdown();
+            } catch (Exception e) {
+                LOGGER.error("Exception, requesting replicator shutdown...",e);
+                requestReplicatorShutdown();
             }
         }
     }
@@ -272,9 +284,8 @@ public class PipelineOrchestrator extends Thread {
                     updateLastKnownPositionForMapEvent();
                 }
                 catch (Exception e) {
-                    LOGGER.error("Could not execute mapEvent block. Something went wrong.");
-                    e.printStackTrace();
-                    System.exit(1);
+                    LOGGER.error("Could not execute mapEvent block. Requesting replicator shutdown...", e);
+                    requestReplicatorShutdown();
                 }
                 break;
 
