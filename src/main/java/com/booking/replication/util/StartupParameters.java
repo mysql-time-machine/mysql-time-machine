@@ -2,6 +2,7 @@ package com.booking.replication.util;
 
 import joptsimple.OptionSet;
 import org.apache.commons.cli.MissingArgumentException;
+import org.apache.commons.lang.StringUtils;
 
 /**
  * Created by bdevetak on 01/12/15.
@@ -31,17 +32,18 @@ public class StartupParameters {
         // schema
         if (o.hasArgument("schema")) {
             schema = o.valueOf("schema").toString();
+            // shards can be specified in config file as ${schema_name}${shard_id}
+            String maybeNumber = (new String(schema)).replaceAll("[A-Za-z]", "");
+            shard = StringUtils.isNotBlank(maybeNumber) ? Integer.parseInt(maybeNumber) : 0;
+            schema = schema.replaceAll("[0-9]","");
         }
         else {
             schema = "test";
         }
 
-        // shard
+        // shard_id can also be explicity passed as cmd argument - that will overide config file setting
         if (o.hasArgument("shard")) {
             shard = Integer.parseInt(o.valueOf("shard").toString());
-        }
-        else {
-            shard = 0;
         }
 
         // config-path

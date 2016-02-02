@@ -13,11 +13,11 @@ import java.io.IOException;
  */
 public interface Applier {
 
-    void apply(AugmentedRowsEvent augmentedSingleRowEvent, PipelineOrchestrator caller) throws IOException;
+    void bufferData(AugmentedRowsEvent augmentedSingleRowEvent, PipelineOrchestrator caller) throws IOException;
 
-    void applyCommitQueryEvent(QueryEvent event, PipelineOrchestrator caller);
+    void applyCommitQueryEvent(QueryEvent event);
 
-    void applyXIDEvent(XidEvent event, PipelineOrchestrator caller);
+    void applyXIDEvent(XidEvent event);
 
     void applyAugmentedSchemaChangeEvent(AugmentedSchemaChangeEvent augmentedSchemaChangeEvent, PipelineOrchestrator caller);
 

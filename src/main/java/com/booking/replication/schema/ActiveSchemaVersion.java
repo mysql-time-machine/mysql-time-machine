@@ -190,7 +190,7 @@ public class ActiveSchemaVersion {
         Connection con = null;
 
         try {
-            // apply DDL
+            // bufferData DDL
             con = activeSchemaDataSource.getConnection();
             Statement ddlStatement = con.createStatement();
             ddlStatement.execute(ddlSQL);

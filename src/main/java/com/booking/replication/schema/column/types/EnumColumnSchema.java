@@ -2,6 +2,8 @@ package com.booking.replication.schema.column.types;
 
 import com.booking.replication.schema.column.ColumnSchema;
 import org.apache.commons.lang.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -17,6 +19,8 @@ public class EnumColumnSchema extends ColumnSchema {
 
     private String[] enumValues;
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(EnumColumnSchema.class);
+
     public EnumColumnSchema(ResultSet tableInfoResultSet) throws SQLException {
         super(tableInfoResultSet);
         extractEnumValues(this.getCOLUMN_TYPE());
@@ -24,7 +28,7 @@ public class EnumColumnSchema extends ColumnSchema {
 
     private void extractEnumValues(String mysqlEnumInfo) {
 
-        String enumPattern = "(?<=enum\\()(.*?)(?=\\))";
+        String enumPattern = "(?<=enum\\()(.*?)(?=\\))\\)$";
 
         Pattern p = Pattern.compile(enumPattern, Pattern.CASE_INSENSITIVE);
 
@@ -46,7 +50,19 @@ public class EnumColumnSchema extends ColumnSchema {
             return "";
         }
         else {
-            return enumValues[index-1];
+            try {
+                return enumValues[index - 1];
+            }
+            catch (IndexOutOfBoundsException e) {
+                LOGGER.error("Index out of bound exception", e);
+                LOGGER.error("received index => " + index);
+                LOGGER.error("available => ");
+                for (String val : enumValues) {
+                    LOGGER.info(val);
+                }
+                throw new IndexOutOfBoundsException();
+            }
+
         }
     }
 }

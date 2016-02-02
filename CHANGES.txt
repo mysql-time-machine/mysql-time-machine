@@ -1,0 +1,27 @@
+Revision history for MySQL-Time-Machine
+
+Release 0.9.5  Date/Time: 2016-02-02
+
+		[ENHANCEMENTS]
+		- Restructured uuidBufer design, for better performance and adaptability
+		  to two distinct load patters (many small transactions vs few very large
+ 		  transactions).
+		- Refactored metrics code. Added additional metrics and clear naming for
+          clear distinction between event-level counters and row-level counters
+        - For updated rows store only the changed cells.
+        - Added operation type markers: 'U' marker for updates, 'I' marker for
+          inserts and 'D' marker for deletes. Markers are stored in column 'd:row_status'
+
+		[MINOR ENHANCEMENTS]
+		- Better naming for some variables and new constants added
+		- shard number can be specified on startup as part of schema name
+
+		[BUG FIXES]
+		- Fixed regex for enum column definition parsing
+		- handle Time2Column OpenReplicator type in type converter
+		- For deleted rows all columns should be ignored (which was not the case).
+
+Release 0.9.4  Date/Time: 2015-12-29
+
+		[INITIAL COMMIT]
+		- Open sourcing the code - initial commit of early beta/alpha code base

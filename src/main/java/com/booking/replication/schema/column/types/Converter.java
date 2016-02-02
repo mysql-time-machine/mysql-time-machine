@@ -242,7 +242,11 @@ public class Converter {
                 }
             }
             else {
-                throw new TableMapException("Unknown MySQL type in the event" + s.getClass() + " Object = " + s);
+                throw new TableMapException("Unknown"
+                        + " MySQL type " + columnSchema.getDATA_TYPE()
+                        + " in the event " + s.getClass()
+                        + " Object = " + s
+                );
             }
         }
 
@@ -279,6 +283,10 @@ public class Converter {
              * There is a bug in OR where instead of using the default year as 1970, it is using 0070.
              * This is a temporary measure to resolve it by working around at this layer. The value obtained from OR is subtracted from "0070-00-01 00:00:00"
              */
+        }
+        else if (s instanceof  Time2Column) {
+            Time2Column t2c = (Time2Column) s;
+            return t2c.toString();
         }
         else if (s instanceof TimestampColumn)
         {

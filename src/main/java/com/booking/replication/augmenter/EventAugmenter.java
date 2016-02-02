@@ -1,6 +1,7 @@
 package com.booking.replication.augmenter;
 
 import com.booking.replication.Configuration;
+import com.booking.replication.metrics.ReplicatorMetrics;
 import com.booking.replication.pipeline.PipelineOrchestrator;
 import com.booking.replication.schema.ActiveSchemaVersion;
 import com.booking.replication.schema.SchemaVersionSnapshot;
@@ -40,20 +41,22 @@ public class EventAugmenter {
     private ActiveSchemaVersion activeSchemaVersion;
     private final Configuration configuration;
 
+    private final ReplicatorMetrics replicatorMetrics;
+
     private static final Logger LOGGER = LoggerFactory.getLogger(EventAugmenter.class);
 
     /**
      * Constructor
      *
      * @param  replicatorConfiguration Replicator configuration object
+     * @param repMetrics
      * @throws SQLException
      * @throws URISyntaxException
      */
-    public EventAugmenter(Configuration replicatorConfiguration) throws SQLException, URISyntaxException {
-
-        //currentTransactionMetadata = new CurrentTransactionMetadata();
+    public EventAugmenter(Configuration replicatorConfiguration, ReplicatorMetrics repMetrics) throws SQLException, URISyntaxException {
         activeSchemaVersion = new ActiveSchemaVersion(replicatorConfiguration);
         configuration = replicatorConfiguration;
+        replicatorMetrics = repMetrics;
     }
 
     /**
@@ -221,7 +224,11 @@ public class EventAugmenter {
             augEvent.setEventType("INSERT");
             augEvent.setEventV4Header(writeRowsEvent.getHeader());
 
-            caller.consumerStatsNumberOfProcessedRows++;
+            replicatorMetrics.incRowsInsertedCounter();
+            replicatorMetrics.incRowsProcessedCounter();
+
+            // caller.incRowsInsertedCounter();
+            // caller.incRowsProcessedCounter();
 
             //column index counting starts with 1
             for (int columnIndex = 1; columnIndex <= numberOfColumns ; columnIndex++ ) {
@@ -266,14 +273,15 @@ public class EventAugmenter {
         
         for (Row row : writeRowsEvent.getRows()) {
 
+            replicatorMetrics.incRowsInsertedCounter();
+            replicatorMetrics.incRowsProcessedCounter();
+
             AugmentedRow augEvent = new AugmentedRow();
 
             augEvent.setTableName(tableName);
             augEvent.setTableSchema(tableSchema);
             augEvent.setEventType("INSERT");
             augEvent.setEventV4Header(writeRowsEvent.getHeader());
-
-            caller.consumerStatsNumberOfProcessedRows++;
 
             //column index counting starts with 1
             for (int columnIndex = 1; columnIndex <= numberOfColumns ; columnIndex++ ) {
@@ -320,6 +328,10 @@ public class EventAugmenter {
         int numberOfColumns = deleteRowsEvent.getColumnCount().intValue();
 
         for (Row row : deleteRowsEvent.getRows()) {
+
+            // caller.incRowsProcessedCounter();
+            replicatorMetrics.incRowsDeletedCounter();
+            replicatorMetrics.incRowsProcessedCounter();
 
             AugmentedRow augEvent = new AugmentedRow();
             augEvent.setTableName(tableName);
@@ -369,6 +381,10 @@ public class EventAugmenter {
         int numberOfColumns = deleteRowsEvent.getColumnCount().intValue();
 
         for (Row row : deleteRowsEvent.getRows()) {
+
+            // caller.incRowsProcessedCounter();
+            replicatorMetrics.incRowsDeletedCounter();
+            replicatorMetrics.incRowsProcessedCounter();
 
             AugmentedRow augEvent = new AugmentedRow();
             augEvent.setTableName(tableName);
@@ -420,6 +436,10 @@ public class EventAugmenter {
 
         // rowPair is pair <rowBeforeChange, rowAfterChange>
         for (Pair<Row> rowPair : upEvent.getRows()) {
+
+            // caller.incRowsProcessedCounter();
+            replicatorMetrics.incRowsUpdatedCounter();
+            replicatorMetrics.incRowsProcessedCounter();
 
             AugmentedRow augEvent = new AugmentedRow();
             augEvent.setTableName(tableName);
@@ -475,6 +495,10 @@ public class EventAugmenter {
         // rowPair is pair <rowBeforeChange, rowAfterChange>
         for (Pair<Row> rowPair : upEvent.getRows()) {
 
+            // caller incRowsProcessedCounter();
+            replicatorMetrics.incRowsUpdatedCounter();
+            replicatorMetrics.incRowsProcessedCounter();
+
             AugmentedRow augEvent = new AugmentedRow();
             augEvent.setTableName(tableName);
             augEvent.setTableSchema(tableSchema); // <- We can do this since in data event schema is unchanged
@@ -487,6 +511,11 @@ public class EventAugmenter {
             for (int columnIndex = 1; columnIndex <= numberOfColumns ; columnIndex++ ) {
 
                 String columnName = tableSchema.getColumnIndexToNameMap().get(columnIndex);
+
+                if (columnName == null) {
+                    LOGGER.error("null columnName for { columnIndex => " + columnIndex + ", tableName => " + tableName + " }" );
+                    throw new TableMapException("columnName cant be null");
+                }
 
                 // but here index goes from 0..
                 Column columnValueBefore = rowPair.getBefore().getColumns().get(columnIndex - 1);

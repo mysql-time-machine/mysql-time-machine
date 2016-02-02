@@ -1,10 +1,11 @@
 package com.booking.replication.monitor;
 
 import com.booking.replication.Constants;
+import com.booking.replication.metrics.ReplicatorMetrics;
 import com.booking.replication.pipeline.PipelineOrchestrator;
 import com.booking.replication.pipeline.BinlogEventProducer;
 import com.booking.replication.pipeline.BinlogPositionInfo;
-import com.booking.replication.stats.Counters;
+import com.booking.replication.metrics.Counters;
 import com.booking.replication.util.MutableLong;
 import com.google.common.base.Joiner;
 import org.slf4j.Logger;
@@ -27,6 +28,7 @@ public class Overseer extends Thread {
     private PipelineOrchestrator pipelineOrchestrator;
     private BinlogEventProducer producer;
     private final ConcurrentHashMap<Integer,Object> lastKnownInfo;
+    private final ReplicatorMetrics replicatorMetrics;
 
     private volatile boolean doMonitor = true;
 
@@ -34,10 +36,11 @@ public class Overseer extends Thread {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(Overseer.class);
 
-    public Overseer(BinlogEventProducer prod, PipelineOrchestrator orch, ConcurrentHashMap<Integer,Object> chm) {
+    public Overseer(BinlogEventProducer prod, PipelineOrchestrator orch, ReplicatorMetrics repMetrics, ConcurrentHashMap<Integer, Object> chm) {
         this.producer      = prod;
         this.pipelineOrchestrator = orch;
         this.lastKnownInfo = chm;
+        this.replicatorMetrics = repMetrics;
     }
 
     @Override
@@ -45,7 +48,7 @@ public class Overseer extends Thread {
         while (doMonitor) {
 
             try {
-                // make sure that producer is running every 5s
+                // make sure that producer is running every 1s
                 Thread.sleep(1000);
                 makeSureProducerIsRunning();
                 String graphiteStatsNamespace = pipelineOrchestrator.configuration.getGraphiteStatsNamesapce();
@@ -66,7 +69,7 @@ public class Overseer extends Thread {
         doMonitor = false;
     }
 
-    public void  startMonitoring() {
+    public void startMonitoring() {
         doMonitor = true;
     }
 
@@ -101,7 +104,7 @@ public class Overseer extends Thread {
             }
         }
         else {
-            LOGGER.info("MonitorCheck: producer is running.");
+            LOGGER.debug("MonitorCheck: producer is running.");
         }
     }
 
@@ -110,41 +113,23 @@ public class Overseer extends Thread {
 
         int currentTimeSeconds = (int) (System.currentTimeMillis() / 1000L);
 
-        LOGGER.info("currentTimeSeconds " + currentTimeSeconds);
-
         List<String> metrics = new ArrayList<String>();
-        for (Integer timebucket : pipelineOrchestrator.getPipelineStats().keySet()) {
+        for (Integer timebucket : replicatorMetrics.getMetrics().keySet()) {
 
-            LOGGER.info("Checking bucket => " + timebucket + ", at currentTime => " + currentTimeSeconds);
+            if (timebucket <  currentTimeSeconds) {
 
-            if (timebucket < currentTimeSeconds) {
-
-                LOGGER.info("processing stats for bucket => " + timebucket + " since < then " + currentTimeSeconds);
+                LOGGER.debug("processing stats for bucket => " + timebucket + " since < then " + currentTimeSeconds);
 
                 HashMap<Integer,MutableLong> timebucketStats;
-                timebucketStats = pipelineOrchestrator.getPipelineStats().get(timebucket);
+                timebucketStats = replicatorMetrics.getMetrics().get(timebucket);
                 if (timebucketStats != null) {
                     // all is good
                 }
                 else {
-                    // timebucket not there
-                    if (pipelineOrchestrator.getPipelineStats().containsKey(timebucket)) {
-                        // created by orchestrator in the meantime
-                    } else {
-                        pipelineOrchestrator.getPipelineStats().put(timebucket, new HashMap<Integer, MutableLong>());
-
-                        pipelineOrchestrator.getPipelineStats().get(timebucket).put(Counters.INSERT_COUNTER, new MutableLong());
-                        pipelineOrchestrator.getPipelineStats().get(timebucket).put(Counters.UPDATE_COUNTER, new MutableLong());
-                        pipelineOrchestrator.getPipelineStats().get(timebucket).put(Counters.DELETE_COUNTER, new MutableLong());
-                        pipelineOrchestrator.getPipelineStats().get(timebucket).put(Counters.COMMIT_COUNTER, new MutableLong());
-                        pipelineOrchestrator.getPipelineStats().get(timebucket).put(Counters.XID_COUNTER, new MutableLong());
-                    }
+                    // initialize timebucket
+                    replicatorMetrics.initTimebucketIfKeyDoesNotExists(timebucket);
                     // check again for data
-                    timebucketStats = pipelineOrchestrator.getPipelineStats().get(timebucket);
-                    if (timebucketStats == null) {
-                        LOGGER.error("there is a whole in this cake. Cant fly any more.");
-                        System.exit(1);
-                    }
+                    timebucketStats = replicatorMetrics.getMetrics().get(timebucket);
                 }
 
                 for (Integer metricsID : timebucketStats.keySet()) {
@@ -154,23 +139,37 @@ public class Overseer extends Thread {
                     String graphiteStatsNamespace = pipelineOrchestrator.configuration.getGraphiteStatsNamesapce();
 
                     if (!graphiteStatsNamespace.equals("no-stats")) {
-                        String graphitePoint = graphiteStatsNamespace
-                                + "."
-                                + pipelineOrchestrator.configuration.getReplicantSchemaName()
-                                + String.valueOf(pipelineOrchestrator.configuration.getReplicantShardID())
-                                + "."
-                                + Counters.getCounterName(metricsID)
-                                + " " + value.toString()
-                                + " " + timebucket.toString();
+                        String graphitePoint;
+                        if (pipelineOrchestrator.configuration.getReplicantShardID() > 0) {
+                            graphitePoint = graphiteStatsNamespace
+                                    + "."
+                                    + pipelineOrchestrator.configuration.getReplicantSchemaName()
+                                    + String.valueOf(pipelineOrchestrator.configuration.getReplicantShardID())
+                                    + "."
+                                    + Counters.getCounterName(metricsID)
+                                    + " " + value.toString()
+                                    + " " + timebucket.toString();
 
-                        LOGGER.info("graphite point => " + graphitePoint);
+                            LOGGER.debug("graphite point => " + graphitePoint);
+                        }
+                        else {
+                            graphitePoint = graphiteStatsNamespace
+                                    + "."
+                                    + pipelineOrchestrator.configuration.getReplicantSchemaName()
+                                    + "."
+                                    + Counters.getCounterName(metricsID)
+                                    + " " + value.toString()
+                                    + " " + timebucket.toString();
+
+                            LOGGER.debug("graphite point => " + graphitePoint);
+                        }
                         metrics.add(graphitePoint);
                     }
                 }
-                String message =Joiner.on("\n").join(metrics);
-                LOGGER.info("Metrics from processed second => " + message);
+                String message = Joiner.on("\n").join(metrics) + "\n";
+                LOGGER.debug("Graphite metrics from processed second => " + message);
                 sendToGraphite(message);
-                pipelineOrchestrator.getPipelineStats().remove(timebucket);
+                replicatorMetrics.getMetrics().remove(timebucket);
             }
         }
     }
@@ -190,9 +189,10 @@ public class Overseer extends Thread {
            byte[] b = message.getBytes();
            DatagramPacket  dp = new DatagramPacket(b , b.length , host , port);
            sock.send(dp);
+            
         }
         catch(IOException e) {
-            System.err.println("IOException " + e);
+            LOGGER.warn("Graphite IOException ", e);
         }
     }
 }

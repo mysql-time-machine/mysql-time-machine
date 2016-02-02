@@ -3,7 +3,6 @@ package com.booking.replication.pipeline;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.sql.SQLException;
-import java.util.HashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -17,11 +16,10 @@ import com.booking.replication.applier.STDOUTJSONApplier;
 import com.booking.replication.augmenter.AugmentedRowsEvent;
 import com.booking.replication.augmenter.AugmentedSchemaChangeEvent;
 import com.booking.replication.augmenter.EventAugmenter;
+import com.booking.replication.metrics.ReplicatorMetrics;
 import com.booking.replication.schema.HBaseSchemaManager;
 import com.booking.replication.schema.exception.TableMapException;
 import com.booking.replication.applier.HBaseApplier;
-import com.booking.replication.stats.Counters;
-import com.booking.replication.util.MutableLong;
 import com.google.code.or.binlog.BinlogEventV4;
 import com.google.code.or.binlog.impl.event.*;
 import com.google.code.or.common.util.MySQLConstants;
@@ -46,7 +44,9 @@ public class PipelineOrchestrator extends Thread {
 
     private final ConcurrentHashMap<Integer,Object> lastKnownInfo;
 
-    private final ConcurrentHashMap<Integer, HashMap<Integer, MutableLong>> pipelineStats;
+    // private final ConcurrentHashMap<Integer, HashMap<Integer, MutableLong>> pipelineStats;
+
+    private final ReplicatorMetrics replicatorMetrics;
 
     public CurrentTransactionMetadata currentTransactionMetadata;
 
@@ -101,14 +101,16 @@ public class PipelineOrchestrator extends Thread {
             LinkedBlockingQueue<BinlogEventV4> q,
             ConcurrentHashMap<Integer,Object> chm,
             Configuration repcfg,
-            ConcurrentHashMap<Integer, HashMap<Integer, MutableLong>> pStats
+            ReplicatorMetrics replicatorMetrics
         ) throws SQLException, URISyntaxException, IOException {
 
-        this.pipelineStats = pStats;
+        // this.pipelineStats = pStats;
+
+        this.replicatorMetrics = replicatorMetrics;
 
         this.configuration = repcfg;
 
-        eventAugmenter = new EventAugmenter(repcfg);
+        eventAugmenter = new EventAugmenter(repcfg, replicatorMetrics);
 
         currentTransactionMetadata = new CurrentTransactionMetadata();
 
@@ -122,7 +124,7 @@ public class PipelineOrchestrator extends Thread {
             applier = new STDOUTJSONApplier();
         }
         else if (repcfg.getApplierType().toLowerCase().equals("hbase")) {
-            applier = new HBaseApplier(repcfg.getZOOKEEPER_QUORUM());
+            applier = new HBaseApplier(repcfg.getZOOKEEPER_QUORUM(), replicatorMetrics);
         }
         else {
             LOGGER.warn("Unknown applier type. Defaulting to STDOUT");
@@ -166,20 +168,25 @@ public class PipelineOrchestrator extends Thread {
 
                     if (event != null) {
                         eventCounter++;
+                        replicatorMetrics.incEventsReceivedCounter();
                         if (!skipEvent(event)) {
                             calculateAndPropagateChanges(event);
+                            replicatorMetrics.incEventsProcessedCounter();
                         }
-                        if (eventCounter % 1000 == 0) {
-                            LOGGER.info("Consumer reporting queue size => " + queue.size());
+                        else {
+                            replicatorMetrics.incEventsSkippedCounter();
+                        }
+                        if (eventCounter % 5000 == 0) {
+                            LOGGER.info("Pipeline report: producer queue size => " + queue.size());
                         }
                     } else {
-                        LOGGER.error("Poll timeout. Will sleep for 1s and try again.");
+                        LOGGER.warn("Poll timeout. Will sleep for 1s and try again.");
                         Thread.sleep(1000);
                     }
                 }
                 else {
-                    LOGGER.info("Consumer reporting: no items in event queue. Will sleep for 5s and check again.");
-                    Thread.sleep(5000);
+                    LOGGER.info("Pipeline report: no items in producer event queue. Will sleep for 0.5s and check again.");
+                    Thread.sleep(500);
                 }
             } catch (InterruptedException e) {
                 LOGGER.error("InterruptedException, requesting replicator shutdown...", e);
@@ -221,8 +228,6 @@ public class PipelineOrchestrator extends Thread {
             fakeMicrosecondCounter = 0;
         }
 
-        checkPipelineStatsForCurrentSecondKeyAndAddIfKeyDoesNotExists();
-
         long tStart;
         long tEnd;
         long tDelta;
@@ -232,11 +237,13 @@ public class PipelineOrchestrator extends Thread {
             // DDL Event:
             case MySQLConstants.QUERY_EVENT:
                 fakeMicrosecondCounter++;
-                incCommitQueryCounter();
                 injectFakeMicroSecondsIntoEventTimestamp(event);
                 String querySQL = ((QueryEvent) event).getSql().toString();
                 if (isCOMMIT(querySQL)) {
-                    applier.applyCommitQueryEvent((QueryEvent) event, this);
+                    replicatorMetrics.incCommitQueryCounter();
+                    applier.applyCommitQueryEvent((QueryEvent) event);
+                    currentTransactionMetadata = null;
+                    currentTransactionMetadata = new CurrentTransactionMetadata();
                 }
                 else if (isDDL(querySQL)) {
                     long tStart5 = System.currentTimeMillis();
@@ -253,14 +260,17 @@ public class PipelineOrchestrator extends Thread {
 
             // TableMap event:
             case MySQLConstants.TABLE_MAP_EVENT:
-                if (((TableMapEvent) event).getTableName().toString().equals("db_heartbeat")) {
+                String tableName = ((TableMapEvent) event).getTableName().toString();
+                if (tableName.equals(Constants.HEART_BEAT_TABLE)) {
                     // reset the fake microsecond counter on hearth beat event. In our case
                     // hearth-beat is a regular update and it is treated as such in the rest
                     // of the code (therefore replicated in HBase table so we have the
                     // hearth-beat in HBase and can use it to check replication delay). The only
                     // exception is that when we see this event we reset the fake-microseconds counter.
+                    LOGGER.debug("fakeMicrosecondCounter before reset => " + fakeMicrosecondCounter);
                     fakeMicrosecondCounter = 0;
                     injectFakeMicroSecondsIntoEventTimestamp(event);
+                    replicatorMetrics.incHeartBeatCounter();
                 } else {
                     fakeMicrosecondCounter++;
                     injectFakeMicroSecondsIntoEventTimestamp(event);
@@ -268,8 +278,9 @@ public class PipelineOrchestrator extends Thread {
                 try {
                     currentTransactionMetadata.updateCache((TableMapEvent) event);
                     long tableID = ((TableMapEvent) event).getTableId();
-                    String tableName = ((TableMapEvent) event).getTableName().toString();
                     String dbName = currentTransactionMetadata.getDBNameFromTableID(tableID);
+                    LOGGER.debug("processing events for { db => " + dbName + " table => " + tableName + " } ");
+                    LOGGER.debug("fakeMicrosecondCounter at tableMap event => " + fakeMicrosecondCounter);
                     String hbaseTableName = dbName.toLowerCase()
                             + ":"
                             + tableName.toLowerCase();
@@ -281,7 +292,7 @@ public class PipelineOrchestrator extends Thread {
                             hBaseSchemaManager.createHBaseTableIfNotExists(hbaseTableName);
                         }
                     }
-                    updateLastKnownPositionForMapEvent();
+                    updateLastKnownPositionForMapEvent((TableMapEvent) event);
                 }
                 catch (Exception e) {
                     LOGGER.error("Could not execute mapEvent block. Requesting replicator shutdown...", e);
@@ -292,7 +303,6 @@ public class PipelineOrchestrator extends Thread {
             // Data event:
             case MySQLConstants.UPDATE_ROWS_EVENT:
             case MySQLConstants.UPDATE_ROWS_EVENT_V2:
-                incUpdateCounter();
                 fakeMicrosecondCounter++;
                 injectFakeMicroSecondsIntoEventTimestamp(event);
                 tStart = System.currentTimeMillis();
@@ -300,13 +310,13 @@ public class PipelineOrchestrator extends Thread {
                 tEnd = System.currentTimeMillis();
                 tDelta = tEnd - tStart;
                 consumerTimeM1 += tDelta;
-                applier.apply(augmentedRowsEvent,this);
+                applier.bufferData(augmentedRowsEvent,this);
                 updateLastKnownPosition((AbstractRowEvent) event);
+                replicatorMetrics.incUpdateEventCounter();
                 break;
 
             case MySQLConstants.WRITE_ROWS_EVENT:
             case MySQLConstants.WRITE_ROWS_EVENT_V2:
-                incInsertCounter();
                 fakeMicrosecondCounter++;
                 injectFakeMicroSecondsIntoEventTimestamp(event);
                 tStart = System.currentTimeMillis();
@@ -314,13 +324,13 @@ public class PipelineOrchestrator extends Thread {
                 tEnd = System.currentTimeMillis();
                 tDelta = tEnd - tStart;
                 consumerTimeM1 += tDelta;
-                applier.apply(augmentedRowsEvent,this);
+                applier.bufferData(augmentedRowsEvent,this);
                 updateLastKnownPosition((AbstractRowEvent) event);
+                replicatorMetrics.incInsertEventCounter();
                 break;
 
             case MySQLConstants.DELETE_ROWS_EVENT:
             case MySQLConstants.DELETE_ROWS_EVENT_V2:
-                incDeleteCounter();
                 fakeMicrosecondCounter++;
                 injectFakeMicroSecondsIntoEventTimestamp(event);
                 tStart = System.currentTimeMillis();
@@ -328,8 +338,9 @@ public class PipelineOrchestrator extends Thread {
                 tEnd = System.currentTimeMillis();
                 tDelta = tEnd - tStart;
                 consumerTimeM1 += tDelta;
-                applier.apply(augmentedRowsEvent,this);
+                applier.bufferData(augmentedRowsEvent,this);
                 updateLastKnownPosition((AbstractRowEvent) event);
+                replicatorMetrics.incDeleteEventCounter();
                 break;
 
             case MySQLConstants.XID_EVENT:
@@ -337,9 +348,11 @@ public class PipelineOrchestrator extends Thread {
                 // (so we can know if events were in the same transaction).
                 // For now we just increase the counter.
                 fakeMicrosecondCounter++;
-                incXIDCounter();
                 injectFakeMicroSecondsIntoEventTimestamp(event);
-                applier.applyXIDEvent((XidEvent) event, this);
+                applier.applyXIDEvent((XidEvent) event);
+                replicatorMetrics.incXIDCounter();
+                currentTransactionMetadata = null;
+                currentTransactionMetadata = new CurrentTransactionMetadata();
                 break;
 
             // Events that we expect to appear in the binlog, but we don't do
@@ -355,10 +368,9 @@ public class PipelineOrchestrator extends Thread {
                 LOGGER.warn("Unexpected event type: " + event.getHeader().getEventType());
                 break;
         }
-
     }
 
-        public boolean isDDL(String querySQL) {
+    public boolean isDDL(String querySQL) {
 
         long tStart = System.currentTimeMillis();
         boolean isDDL;
@@ -472,7 +484,7 @@ public class PipelineOrchestrator extends Thread {
                     }
                 }
                 else {
-                    LOGGER.info("non-replicant db event for db: " + dbName);
+                    // LOGGER.debug("non-replicant db event for db: " + dbName);
                 }
                 break;
 
@@ -533,10 +545,6 @@ public class PipelineOrchestrator extends Thread {
         return  skipEvent;
     }
 
-    public static long getFakeMicrosecondCounter() {
-        return fakeMicrosecondCounter;
-    }
-
     private void injectFakeMicroSecondsIntoEventTimestamp(BinlogEventV4 event) {
 
         long tStart = System.currentTimeMillis();
@@ -556,9 +564,19 @@ public class PipelineOrchestrator extends Thread {
         consumerTimeM4 += tDelta;
     }
 
-    private void updateLastKnownPositionForMapEvent() {
+    private void updateLastKnownPositionForMapEvent(TableMapEvent event) {
 
-        TableMapEvent event = currentTransactionMetadata.getFirstMapEventInTransaction();
+        String lastBinlogFileName;
+        if (lastKnownInfo.get(Constants.LAST_KNOWN_MAP_EVENT_POSITION) != null) {
+            lastBinlogFileName = ((BinlogPositionInfo) lastKnownInfo.get(Constants.LAST_KNOWN_MAP_EVENT_POSITION)).getBinlogFilename();
+        }
+        else {
+            lastBinlogFileName = "";
+        }
+
+        if (!event.getBinlogFilename().equals(lastBinlogFileName)) {
+            LOGGER.info("moving to next binlog file [ " + lastBinlogFileName + " ] ==>> [ " + event.getBinlogFilename() + " ]");
+        }
 
         lastKnownInfo.put(
                 Constants.LAST_KNOWN_MAP_EVENT_POSITION,
@@ -568,34 +586,10 @@ public class PipelineOrchestrator extends Thread {
                 )
         );
 
-        LOGGER.info("Updated last known map event position to => ["
+        LOGGER.debug("Updated last known map event position to => ["
                 + ((BinlogPositionInfo) lastKnownInfo.get(Constants.LAST_KNOWN_MAP_EVENT_POSITION)).getBinlogFilename()
                 + ":"
                 + ((BinlogPositionInfo) lastKnownInfo.get(Constants.LAST_KNOWN_MAP_EVENT_POSITION)).getBinlogPosition()
-                + "]"
-        );
-    }
-
-    // TODO: make this nicer
-    private void updateLastKnownFakeMicrosecondCounterForMapEvent() {
-
-        TableMapEvent event = currentTransactionMetadata.getFirstMapEventInTransaction();
-
-        lastKnownInfo.put(
-                Constants.LAST_KNOWN_MAP_EVENT_POSITION_FAKE_MICROSECONDS_COUNTER,
-                new BinlogPositionInfo(
-                        event.getBinlogFilename(),
-                        event.getHeader().getPosition(),
-                        fakeMicrosecondCounter
-                )
-        );
-
-        LOGGER.info("Updated last known map event fakeMicrosendsCounter info to => ["
-                + ((BinlogPositionInfo) lastKnownInfo.get(Constants.LAST_KNOWN_MAP_EVENT_POSITION_FAKE_MICROSECONDS_COUNTER)).getBinlogFilename()
-                + ":"
-                + ((BinlogPositionInfo) lastKnownInfo.get(Constants.LAST_KNOWN_MAP_EVENT_POSITION_FAKE_MICROSECONDS_COUNTER)).getBinlogPosition()
-                + ":"
-                + ((BinlogPositionInfo) lastKnownInfo.get(Constants.LAST_KNOWN_MAP_EVENT_POSITION_FAKE_MICROSECONDS_COUNTER)).getFakeMicrosecondsCounter()
                 + "]"
         );
     }
@@ -606,65 +600,5 @@ public class PipelineOrchestrator extends Thread {
                 event.getHeader().getPosition()
         );
         lastKnownInfo.put(Constants.LAST_KNOWN_BINLOG_POSITION, lastKnownPosition);
-    }
-
-    public ConcurrentHashMap<Integer, HashMap<Integer, MutableLong>> getPipelineStats() {
-        return pipelineStats;
-    }
-
-    private void checkPipelineStatsForCurrentSecondKeyAndAddIfKeyDoesNotExists() {
-        int currentTimeSeconds = (int) (System.currentTimeMillis() / 1000L);
-
-        if (this.pipelineStats.containsKey(currentTimeSeconds)) {
-            return;
-        }
-        else {
-            pipelineStats.put(currentTimeSeconds, new HashMap<Integer, MutableLong>());
-            pipelineStats.get(currentTimeSeconds).put(Counters.INSERT_COUNTER, new MutableLong());
-            pipelineStats.get(currentTimeSeconds).put(Counters.UPDATE_COUNTER, new MutableLong());
-            pipelineStats.get(currentTimeSeconds).put(Counters.DELETE_COUNTER, new MutableLong());
-            pipelineStats.get(currentTimeSeconds).put(Counters.COMMIT_COUNTER, new MutableLong());
-            pipelineStats.get(currentTimeSeconds).put(Counters.XID_COUNTER, new MutableLong());
-        }
-    }
-
-    private void incInsertCounter() {
-        int currentTimeSeconds = (int) (System.currentTimeMillis() / 1000L);
-        if (pipelineStats.get(currentTimeSeconds) == null) {
-            checkPipelineStatsForCurrentSecondKeyAndAddIfKeyDoesNotExists();
-        }
-        pipelineStats.get(currentTimeSeconds).get(Counters.INSERT_COUNTER).increment();
-    }
-
-    private void incUpdateCounter() {
-        int currentTimeSeconds = (int) (System.currentTimeMillis() / 1000L);
-        if (pipelineStats.get(currentTimeSeconds) == null) {
-            checkPipelineStatsForCurrentSecondKeyAndAddIfKeyDoesNotExists();
-        }
-        pipelineStats.get(currentTimeSeconds).get(Counters.UPDATE_COUNTER).increment();
-    }
-
-    private void incDeleteCounter() {
-        int currentTimeSeconds = (int) (System.currentTimeMillis() / 1000L);
-        if (pipelineStats.get(currentTimeSeconds) == null) {
-            checkPipelineStatsForCurrentSecondKeyAndAddIfKeyDoesNotExists();
-        }
-        pipelineStats.get(currentTimeSeconds).get(Counters.DELETE_COUNTER).increment();
-    }
-
-    private void incCommitQueryCounter() {
-        int currentTimeSeconds = (int) (System.currentTimeMillis() / 1000L);
-        if (pipelineStats.get(currentTimeSeconds) == null) {
-            checkPipelineStatsForCurrentSecondKeyAndAddIfKeyDoesNotExists();
-        }
-        pipelineStats.get(currentTimeSeconds).get(Counters.COMMIT_COUNTER).increment();
-    }
-
-    private void incXIDCounter() {
-        int currentTimeSeconds = (int) (System.currentTimeMillis() / 1000L);
-        if (pipelineStats.get(currentTimeSeconds) == null) {
-            checkPipelineStatsForCurrentSecondKeyAndAddIfKeyDoesNotExists();
-        }
-        pipelineStats.get(currentTimeSeconds).get(Counters.XID_COUNTER);
     }
 }

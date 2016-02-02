@@ -1,5 +1,6 @@
 package com.booking.replication;
 
+import com.booking.replication.metrics.ReplicatorMetrics;
 import com.booking.replication.pipeline.BinlogEventProducer;
 import com.booking.replication.pipeline.PipelineOrchestrator;
 import com.booking.replication.pipeline.BinlogPositionInfo;
@@ -41,8 +42,10 @@ public class Replicator {
     private final ConcurrentHashMap<Integer,Object> lastKnownInfo =
             new ConcurrentHashMap<Integer, Object>();
 
-    private final  ConcurrentHashMap<Integer, HashMap<Integer, MutableLong>> pipelineStats =
-            new  ConcurrentHashMap<Integer, HashMap<Integer, MutableLong>>();
+    //private final  ConcurrentHashMap<Integer, HashMap<Integer, MutableLong>> pipelineStats =
+    //        new  ConcurrentHashMap<Integer, HashMap<Integer, MutableLong>>();
+
+    private final ReplicatorMetrics replicatorMetrics = new ReplicatorMetrics();
 
     private static final Logger LOGGER = LoggerFactory.getLogger(Replicator.class);
 
@@ -57,9 +60,9 @@ public class Replicator {
         lastKnownInfo.put(Constants.LAST_KNOWN_BINLOG_POSITION, lastKnownPosition);
 
         binlogEventProducer = new BinlogEventProducer(binlogEventQueue, lastKnownInfo, configuration);
-        pipelineOrchestrator = new PipelineOrchestrator( binlogEventQueue, lastKnownInfo, configuration, pipelineStats);
+        pipelineOrchestrator = new PipelineOrchestrator( binlogEventQueue, lastKnownInfo, configuration, replicatorMetrics);
 
-        overseer = new Overseer(binlogEventProducer, pipelineOrchestrator, lastKnownInfo);
+        overseer = new Overseer(binlogEventProducer, pipelineOrchestrator, replicatorMetrics ,lastKnownInfo);
     }
 
     // start()

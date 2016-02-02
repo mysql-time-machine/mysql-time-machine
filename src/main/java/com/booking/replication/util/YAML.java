@@ -64,14 +64,22 @@ public class YAML {
             Map<String, Map<String,Object>> config =
                     (Map<String, Map<String,Object>>) yaml.load(in);
 
-            for (String key : config.keySet()) {
+            for (String shardConfigKey : config.keySet()) {
 
-                if (key.equals(schema)) {
+                String shardName;
+
+                if (shard > 0) {
+                    shardName = schema + shard.toString();
+                } else {
+                    shardName = schema;
+                }
+
+                if (shardConfigKey.equals(shardName)) {
 
                     // configs
-                    Map<String, Object> value = config.get(key);
+                    Map<String, Object> value = config.get(shardConfigKey);
 
-                    rc.setReplicantSchemaName(key);
+                    rc.setReplicantSchemaName(shardConfigKey);
                     rc.setReplicantDBUserName((String) value.get("username"));
                     rc.setReplicantDBPassword((String) value.get("password"));
                     rc.setReplicantDBSlavesByDC((Map<String, List<String>>) value.get("slaves"));
@@ -79,23 +87,28 @@ public class YAML {
                     rc.setReplicantShardID(shard);
                 }
 
-                if (key.equals(SCHEMA_TRACKER)) {
-                    Map<String, Object> value = config.get(key);
+                if (shardConfigKey.equals(SCHEMA_TRACKER)) {
+                    Map<String, Object> value = config.get(shardConfigKey);
 
                     rc.setActiveSchemaUserName((String) value.get("username"));
                     rc.setActiveSchemaPassword((String) value.get("password"));
                     rc.setActiveSchemaHostsByDC((Map<String, String>) value.get("hosts"));
                     rc.setActiveSchemaHost(rc.getActiveSchemaHostsByDC().get(dc));
-                    rc.setActiveSchemaDB(schema + shard + "_" + Constants.ACTIVE_SCHEMA_SUFIX);
+                    if (shard > 0) {
+                        rc.setActiveSchemaDB(schema + shard + "_" + Constants.ACTIVE_SCHEMA_SUFIX);
+                    }
+                    else {
+                        rc.setActiveSchemaDB(schema + "_" + Constants.ACTIVE_SCHEMA_SUFIX);
+                    }
                 }
 
-                if (key.equals("zookeepers")) {
-                    Map<String, Object> value = config.get(key);
+                if (shardConfigKey.equals("zookeepers")) {
+                    Map<String, Object> value = config.get(shardConfigKey);
                     rc.setZOOKEEPER_QUORUM((String) value.get(dc));
                 }
 
-                if (key.equals("graphite")) {
-                    Map<String, Object> value = config.get(key);
+                if (shardConfigKey.equals("graphite")) {
+                    Map<String, Object> value = config.get(shardConfigKey);
                     String graphiteStatsNamespace = (String) value.get("namespace");
                     rc.setGraphiteStatsNamesapce(graphiteStatsNamespace);
                 }
@@ -110,6 +123,7 @@ public class YAML {
 
         // TODO: Currently just take first slave from the list;
         //       later implement active slave tracking and slave fail-over
+
         rc.setReplicantDBActiveHost(rc.getReplicantDBSlavesByDC().get(rc.getReplicantDC()).iterator().next().toString());
 
         return rc;

@@ -126,9 +126,7 @@ public class BinlogEventProducer {
 
         long preasureSleep = 0;
 
-        if      (qPercent < 10) { preasureSleep = 0;    }
-        else if (qPercent < 20) { preasureSleep = 1;    }
-        else if (qPercent < 30) { preasureSleep = 2;    }
+        if      (qPercent < 30) { preasureSleep = 0;    }
         else if (qPercent < 40) { preasureSleep = 4;    }
         else if (qPercent < 50) { preasureSleep = 8;    }
         else if (qPercent < 60) { preasureSleep = 16;   }
@@ -141,9 +139,12 @@ public class BinlogEventProducer {
         else if (qPercent < 95) { preasureSleep = 4096; }
         else                    { preasureSleep = 8192; }
 
+        if (preasureSleep > 4000) {
+            LOGGER.warn("Queue is getting big, back pressure is getting high");
+        }
+
         try {
             Thread.sleep(preasureSleep);
-            // LOGGER.info("preasureSleep for " + preasureSleep + "ms");
         } catch (InterruptedException e) {
             LOGGER.error("Thread wont sleep");
             e.printStackTrace();
