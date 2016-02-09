@@ -34,31 +34,82 @@ public class Converter {
     // can be added
     public static String orTypeToString(Column s, ColumnSchema columnSchema) throws TableMapException
     {
+
+        // ================================================================
+        // Bit
+        // ================================================================
         if (s instanceof BitColumn)
         {
             BitColumn bc = (BitColumn) s;
             return bc.toString();
         }
+
+        // ================================================================
+        // Blob and Text column types
+        // ================================================================
         else if (s instanceof BlobColumn)
         {
             BlobColumn bc = (BlobColumn) s;
-            byte[] value = bc.getValue();
-            String stringValue = new String(value);
-            return stringValue;
+            byte[] bytes = bc.getValue();
+
+            // TINYTEXT, TEXT, MEDIUMTEXT, and LONGTEXT
+            if (columnSchema.getCOLUMN_TYPE().contains("text")) {
+
+                String charSetName = columnSchema.getCHARACTER_SET_NAME();
+
+                if (charSetName == null) {
+                    // TODO: defualt to TABLE/DB charset; in the meantime return HEX-fied blob
+                    return blobToHexString(bytes);
+                }
+                else if (charSetName.contains("utf8")) {
+                    String utf8Value = null;
+                    try {
+                        utf8Value = new String(bytes,"UTF8");
+                    } catch (UnsupportedEncodingException e) {
+                        e.printStackTrace();
+                    }
+                    return utf8Value;
+                }
+                else if (charSetName.contains("latin1")) {
+                    String latin1Value = null;
+                    try {
+                        latin1Value = new String(bytes,"ISO-8859-1");
+                    } catch (UnsupportedEncodingException e) {
+                        e.printStackTrace();
+                    }
+                    return latin1Value;
+                }
+                else {
+                    // TODO: handle other encodings; in the meantime return HEX-fied blob
+                    return blobToHexString(bytes);
+                }
+            }
+            else {
+                // Ordinary Binary BLOB - convert to HEX string
+                String stringValue = blobToHexString(bytes);
+                return stringValue;
+            }
         }
+
+        // ================================================================
+        // Varchar column type
+        // ================================================================
         else if (s instanceof StringColumn)
         {
             StringColumn sc = (StringColumn) s;
-            //CharSequence utf8 = "utf8";
+
             String charSetName = columnSchema.getCHARACTER_SET_NAME();
 
+            // Open replicator provides raw bytes. We need encoding from
+            // the schema info in order to know how to decode the value
+            // before sending it to HBase which will encode it to bytes
+            // with its internal encoding (Bytes.toBytes())
             if (charSetName == null) {
-                   charSetName = "utf8"; // <- for now assume UTF8, the database default in most cases
-                // TODO: defualt to TABLE/DB charset
-                // TODO: handle other encodings
+                // TODO: defualt to TABLE/DB charset; in the meantime return HEX-fied blob
+                byte[] bytes = sc.getValue();
+                return blobToHexString(bytes);
             }
-
-            if (charSetName.contains("utf8")) {
+            else if (charSetName.contains("utf8")) {
                 byte[] bytes = sc.getValue();
                 String utf8Value = null;
                 try {
@@ -68,8 +119,20 @@ public class Converter {
                 }
                 return utf8Value;
             }
+            else if (charSetName.contains("latin1")) {
+                byte[] bytes = sc.getValue();
+                String latin1Value = null;
+                try {
+                    latin1Value = new String(bytes,"ISO-8859-1");
+                } catch (UnsupportedEncodingException e) {
+                    e.printStackTrace();
+                }
+                return latin1Value;
+            }
             else {
-                return sc.toString();
+                // TODO: handle other encodings; in the meantime return HEX-fied blob
+                byte[] bytes = sc.getValue();
+                return blobToHexString(bytes);
             }
         }
         else if (s instanceof NullColumn)
@@ -77,9 +140,9 @@ public class Converter {
             return "NULL";
         }
 
-        /**
-         * Set and Enum types
-         */
+        // ================================================================
+        // Set and Enum types
+        // ================================================================
         else if (s instanceof SetColumn)
         {
             SetColumn sc = (SetColumn) s;
@@ -119,9 +182,9 @@ public class Converter {
 
         }
 
-        /**
-         * Floating point types
-         */
+        // ================================================================
+        // Floating point types
+        // ================================================================
         else if (s instanceof DecimalColumn)
         {
             DecimalColumn dc = (DecimalColumn) s;
@@ -140,9 +203,9 @@ public class Converter {
             return Float.toString(fc.getValue());
         }
 
-        /**
-         * Whole numbers (with unsigned option) types
-         */
+        // ================================================================
+        // Whole numbers (with unsigned option) types
+        // ================================================================
         else if (s instanceof TinyColumn)
         {
             // 1 byte
@@ -250,9 +313,9 @@ public class Converter {
             }
         }
 
-        /**
-         * Date&Time types
-         */
+        // ================================================================
+        // Date&Time types
+        // ================================================================
         else if (s instanceof YearColumn)
         {
             YearColumn yc = (YearColumn) s;
@@ -291,15 +354,34 @@ public class Converter {
         else if (s instanceof TimestampColumn)
         {
             TimestampColumn tsc = (TimestampColumn) s;
-            return tsc.toString();
+            Long timestampValue = tsc.getValue().getTime();
+            return String.valueOf(timestampValue);
         }
         else if (s instanceof Timestamp2Column) {
             Timestamp2Column ts2c = (Timestamp2Column) s;
-            return ts2c.toString();
+            Long timestamp2Value = ts2c.getValue().getTime();
+            return String.valueOf(timestamp2Value);
         }
         else
         {
             throw new TableMapException("Unknown MySQL type in the event" + s.getClass() + " Object = " + s);
         }
+    }
+
+    public static String blobToHexString( byte [] raw ) {
+        if ( raw == null ) {
+            return "NULL";
+        }
+        final StringBuilder hex = new StringBuilder( 2 * raw.length );
+        for ( final byte b : raw ) {
+            int i = b & 0xFF;
+            if (i < 16 ) {
+                 hex.append("0" + Integer.toHexString(i).toUpperCase());
+            }
+            else {
+                hex.append(Integer.toHexString(i).toUpperCase());
+            }
+        }
+        return hex.toString();
     }
 }
