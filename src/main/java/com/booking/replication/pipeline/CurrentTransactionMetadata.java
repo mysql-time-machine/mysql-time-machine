@@ -51,6 +51,10 @@ public class CurrentTransactionMetadata {
         String tableName = tableID2Name.get(tableID);
 
         if (tableName == null) {
+            LOGGER.error("Table ID not known. Known tables and ids are:");
+            for(long tID: tableID2Name.keySet()) {
+                LOGGER.info(" id => " + tID + " , tableName " + tableID2Name.get(tID));
+            }
             throw new TableMapException("Table ID not present in CurrentTransactionMetadata!");
         }
         else {
