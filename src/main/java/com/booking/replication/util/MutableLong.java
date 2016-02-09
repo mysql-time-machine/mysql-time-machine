@@ -14,4 +14,6 @@ public class MutableLong {
     public long getValue() {
         return value;
     }
+
+    public void setValue(Long newValue) { value = newValue; }
 }

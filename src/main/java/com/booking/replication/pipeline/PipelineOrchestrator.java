@@ -232,6 +232,11 @@ public class PipelineOrchestrator extends Thread {
         long tEnd;
         long tDelta;
 
+        // Calculate replication delay before the event timestamp is extended with fake miscrosecond part
+        Long replicationReplicationDelay = event.getHeader().getTimestampOfReceipt() - event.getHeader().getTimestamp();
+        replicatorMetrics.setReplicatorReplicationDelay(replicationReplicationDelay);
+
+        // Process Event
         switch (event.getHeader().getEventType()) {
 
             // DDL Event:
@@ -261,6 +266,7 @@ public class PipelineOrchestrator extends Thread {
             // TableMap event:
             case MySQLConstants.TABLE_MAP_EVENT:
                 String tableName = ((TableMapEvent) event).getTableName().toString();
+
                 if (tableName.equals(Constants.HEART_BEAT_TABLE)) {
                     // reset the fake microsecond counter on hearth beat event. In our case
                     // hearth-beat is a regular update and it is treated as such in the rest
@@ -355,9 +361,12 @@ public class PipelineOrchestrator extends Thread {
                 currentTransactionMetadata = new CurrentTransactionMetadata();
                 break;
 
+            // reset the fakeMicrosecondCounter at the beggining of the new binlog file
+            case MySQLConstants.FORMAT_DESCRIPTION_EVENT:
+                fakeMicrosecondCounter = 0;
+
             // Events that we expect to appear in the binlog, but we don't do
             // any extra processing.
-            case MySQLConstants.FORMAT_DESCRIPTION_EVENT:
             case MySQLConstants.ROTATE_EVENT:
             case MySQLConstants.STOP_EVENT:
                 break;

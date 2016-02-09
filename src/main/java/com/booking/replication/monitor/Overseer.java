@@ -5,7 +5,7 @@ import com.booking.replication.metrics.ReplicatorMetrics;
 import com.booking.replication.pipeline.PipelineOrchestrator;
 import com.booking.replication.pipeline.BinlogEventProducer;
 import com.booking.replication.pipeline.BinlogPositionInfo;
-import com.booking.replication.metrics.Counters;
+import com.booking.replication.metrics.Metric;
 import com.booking.replication.util.MutableLong;
 import com.google.common.base.Joiner;
 import org.slf4j.Logger;
@@ -138,6 +138,8 @@ public class Overseer extends Thread {
 
                     String graphiteStatsNamespace = pipelineOrchestrator.configuration.getGraphiteStatsNamesapce();
 
+                    String metricsName;
+
                     if (!graphiteStatsNamespace.equals("no-stats")) {
                         String graphitePoint;
                         if (pipelineOrchestrator.configuration.getReplicantShardID() > 0) {
@@ -146,7 +148,7 @@ public class Overseer extends Thread {
                                     + pipelineOrchestrator.configuration.getReplicantSchemaName()
                                     + String.valueOf(pipelineOrchestrator.configuration.getReplicantShardID())
                                     + "."
-                                    + Counters.getCounterName(metricsID)
+                                    + Metric.getCounterName(metricsID)
                                     + " " + value.toString()
                                     + " " + timebucket.toString();
 
@@ -157,7 +159,7 @@ public class Overseer extends Thread {
                                     + "."
                                     + pipelineOrchestrator.configuration.getReplicantSchemaName()
                                     + "."
-                                    + Counters.getCounterName(metricsID)
+                                    + Metric.getCounterName(metricsID)
                                     + " " + value.toString()
                                     + " " + timebucket.toString();
 

@@ -27,24 +27,26 @@ public class ReplicatorMetrics {
         else {
             this.replicatorMetrics.put(currentTimeSeconds, new HashMap<Integer, MutableLong>());
 
-            this.replicatorMetrics.get(currentTimeSeconds).put(Counters.EVENTS_RECEIVED, new MutableLong());
-            this.replicatorMetrics.get(currentTimeSeconds).put(Counters.EVENTS_SKIPPED, new MutableLong());
-            this.replicatorMetrics.get(currentTimeSeconds).put(Counters.EVENTS_PROCESSED, new MutableLong());
+            this.replicatorMetrics.get(currentTimeSeconds).put(Metric.EVENTS_RECEIVED, new MutableLong());
+            this.replicatorMetrics.get(currentTimeSeconds).put(Metric.EVENTS_SKIPPED, new MutableLong());
+            this.replicatorMetrics.get(currentTimeSeconds).put(Metric.EVENTS_PROCESSED, new MutableLong());
 
-            this.replicatorMetrics.get(currentTimeSeconds).put(Counters.INSERT_EVENTS_COUNTER, new MutableLong());
-            this.replicatorMetrics.get(currentTimeSeconds).put(Counters.UPDATE_EVENTS_COUNTER, new MutableLong());
-            this.replicatorMetrics.get(currentTimeSeconds).put(Counters.DELETE_EVENTS_COUNTER, new MutableLong());
-            this.replicatorMetrics.get(currentTimeSeconds).put(Counters.COMMIT_COUNTER, new MutableLong());
-            this.replicatorMetrics.get(currentTimeSeconds).put(Counters.XID_COUNTER, new MutableLong());
+            this.replicatorMetrics.get(currentTimeSeconds).put(Metric.INSERT_EVENTS_COUNTER, new MutableLong());
+            this.replicatorMetrics.get(currentTimeSeconds).put(Metric.UPDATE_EVENTS_COUNTER, new MutableLong());
+            this.replicatorMetrics.get(currentTimeSeconds).put(Metric.DELETE_EVENTS_COUNTER, new MutableLong());
+            this.replicatorMetrics.get(currentTimeSeconds).put(Metric.COMMIT_COUNTER, new MutableLong());
+            this.replicatorMetrics.get(currentTimeSeconds).put(Metric.XID_COUNTER, new MutableLong());
 
-            this.replicatorMetrics.get(currentTimeSeconds).put(Counters.ROWS_PROCESSED, new MutableLong());
-            this.replicatorMetrics.get(currentTimeSeconds).put(Counters.ROWS_INSERTED, new MutableLong());
-            this.replicatorMetrics.get(currentTimeSeconds).put(Counters.ROWS_UPDATED, new MutableLong());
-            this.replicatorMetrics.get(currentTimeSeconds).put(Counters.ROWS_DELETED, new MutableLong());
-            this.replicatorMetrics.get(currentTimeSeconds).put(Counters.ROWS_APPLIED, new MutableLong());
+            this.replicatorMetrics.get(currentTimeSeconds).put(Metric.ROWS_PROCESSED, new MutableLong());
+            this.replicatorMetrics.get(currentTimeSeconds).put(Metric.ROWS_INSERTED, new MutableLong());
+            this.replicatorMetrics.get(currentTimeSeconds).put(Metric.ROWS_UPDATED, new MutableLong());
+            this.replicatorMetrics.get(currentTimeSeconds).put(Metric.ROWS_DELETED, new MutableLong());
+            this.replicatorMetrics.get(currentTimeSeconds).put(Metric.ROWS_APPLIED, new MutableLong());
 
-            this.replicatorMetrics.get(currentTimeSeconds).put(Counters.HEART_BEAT_COUNTER, new MutableLong());
-            this.replicatorMetrics.get(currentTimeSeconds).put(Counters.APPLIER_TASKS_SUCCEEDED, new MutableLong());
+            this.replicatorMetrics.get(currentTimeSeconds).put(Metric.HEART_BEAT_COUNTER, new MutableLong());
+            this.replicatorMetrics.get(currentTimeSeconds).put(Metric.APPLIER_TASKS_SUCCEEDED, new MutableLong());
+
+            this.replicatorMetrics.get(currentTimeSeconds).put(Metric.REPLICATION_DELAY_MS, new MutableLong());
         }
     }
 
@@ -54,7 +56,7 @@ public class ReplicatorMetrics {
         if (this.replicatorMetrics.get(currentTimeSeconds) == null) {
             initTimebucketIfKeyDoesNotExists(currentTimeSeconds);
         }
-        this.replicatorMetrics.get(currentTimeSeconds).get(Counters.ROWS_INSERTED).increment();
+        this.replicatorMetrics.get(currentTimeSeconds).get(Metric.ROWS_INSERTED).increment();
     }
 
     public void incRowsUpdatedCounter() {
@@ -62,7 +64,7 @@ public class ReplicatorMetrics {
         if (this.replicatorMetrics.get(currentTimeSeconds) == null) {
             initTimebucketIfKeyDoesNotExists(currentTimeSeconds);
         }
-        this.replicatorMetrics.get(currentTimeSeconds).get(Counters.ROWS_UPDATED).increment();
+        this.replicatorMetrics.get(currentTimeSeconds).get(Metric.ROWS_UPDATED).increment();
     }
 
     public void incRowsDeletedCounter() {
@@ -70,7 +72,7 @@ public class ReplicatorMetrics {
         if (this.replicatorMetrics.get(currentTimeSeconds) == null) {
             initTimebucketIfKeyDoesNotExists(currentTimeSeconds);
         }
-        this.replicatorMetrics.get(currentTimeSeconds).get(Counters.ROWS_DELETED).increment();
+        this.replicatorMetrics.get(currentTimeSeconds).get(Metric.ROWS_DELETED).increment();
     }
 
     public void incRowsProcessedCounter() {
@@ -78,14 +80,14 @@ public class ReplicatorMetrics {
         if (this.replicatorMetrics.get(currentTimeSeconds) == null) {
             initTimebucketIfKeyDoesNotExists(currentTimeSeconds);
         }
-        this.replicatorMetrics.get(currentTimeSeconds).get(Counters.ROWS_PROCESSED).increment();
+        this.replicatorMetrics.get(currentTimeSeconds).get(Metric.ROWS_PROCESSED).increment();
     }
     public void incRowsAppliedCounter() {
         int currentTimeSeconds = (int) (System.currentTimeMillis() / 1000L);
         if (this.replicatorMetrics.get(currentTimeSeconds) == null) {
             initTimebucketIfKeyDoesNotExists(currentTimeSeconds);
         }
-        this.replicatorMetrics.get(currentTimeSeconds).get(Counters.ROWS_APPLIED).increment();
+        this.replicatorMetrics.get(currentTimeSeconds).get(Metric.ROWS_APPLIED).increment();
     }
 
     // EVENTS
@@ -94,7 +96,7 @@ public class ReplicatorMetrics {
         if (this.replicatorMetrics.get(currentTimeSeconds) == null) {
             initTimebucketIfKeyDoesNotExists(currentTimeSeconds);
         }
-        this.replicatorMetrics.get(currentTimeSeconds).get(Counters.INSERT_EVENTS_COUNTER).increment();
+        this.replicatorMetrics.get(currentTimeSeconds).get(Metric.INSERT_EVENTS_COUNTER).increment();
     }
 
     public void incUpdateEventCounter() {
@@ -102,7 +104,7 @@ public class ReplicatorMetrics {
         if (this.replicatorMetrics.get(currentTimeSeconds) == null) {
             initTimebucketIfKeyDoesNotExists(currentTimeSeconds);
         }
-        this.replicatorMetrics.get(currentTimeSeconds).get(Counters.UPDATE_EVENTS_COUNTER).increment();
+        this.replicatorMetrics.get(currentTimeSeconds).get(Metric.UPDATE_EVENTS_COUNTER).increment();
     }
 
     public void incDeleteEventCounter() {
@@ -110,7 +112,7 @@ public class ReplicatorMetrics {
         if (this.replicatorMetrics.get(currentTimeSeconds) == null) {
             initTimebucketIfKeyDoesNotExists(currentTimeSeconds);
         }
-        this.replicatorMetrics.get(currentTimeSeconds).get(Counters.DELETE_EVENTS_COUNTER).increment();
+        this.replicatorMetrics.get(currentTimeSeconds).get(Metric.DELETE_EVENTS_COUNTER).increment();
     }
 
     public void incCommitQueryCounter() {
@@ -118,7 +120,7 @@ public class ReplicatorMetrics {
         if (this.replicatorMetrics.get(currentTimeSeconds) == null) {
             initTimebucketIfKeyDoesNotExists(currentTimeSeconds);
         }
-        this.replicatorMetrics.get(currentTimeSeconds).get(Counters.COMMIT_COUNTER).increment();
+        this.replicatorMetrics.get(currentTimeSeconds).get(Metric.COMMIT_COUNTER).increment();
     }
 
     public void incXIDCounter() {
@@ -126,7 +128,7 @@ public class ReplicatorMetrics {
         if (this.replicatorMetrics.get(currentTimeSeconds) == null) {
             initTimebucketIfKeyDoesNotExists(currentTimeSeconds);
         }
-        this.replicatorMetrics.get(currentTimeSeconds).get(Counters.XID_COUNTER);
+        this.replicatorMetrics.get(currentTimeSeconds).get(Metric.XID_COUNTER);
     }
 
     public void incEventsReceivedCounter() {
@@ -134,7 +136,7 @@ public class ReplicatorMetrics {
         if (this.replicatorMetrics.get(currentTimeSeconds) == null) {
             initTimebucketIfKeyDoesNotExists(currentTimeSeconds);
         }
-        this.replicatorMetrics.get(currentTimeSeconds).get(Counters.EVENTS_RECEIVED).increment();
+        this.replicatorMetrics.get(currentTimeSeconds).get(Metric.EVENTS_RECEIVED).increment();
     }
 
     public void incEventsProcessedCounter() {
@@ -142,7 +144,7 @@ public class ReplicatorMetrics {
         if (this.replicatorMetrics.get(currentTimeSeconds) == null) {
             initTimebucketIfKeyDoesNotExists(currentTimeSeconds);
         }
-        this.replicatorMetrics.get(currentTimeSeconds).get(Counters.EVENTS_PROCESSED).increment();
+        this.replicatorMetrics.get(currentTimeSeconds).get(Metric.EVENTS_PROCESSED).increment();
     }
 
     public void incEventsSkippedCounter() {
@@ -150,7 +152,7 @@ public class ReplicatorMetrics {
         if (this.replicatorMetrics.get(currentTimeSeconds) == null) {
             initTimebucketIfKeyDoesNotExists(currentTimeSeconds);
         }
-        this.replicatorMetrics.get(currentTimeSeconds).get(Counters.EVENTS_SKIPPED).increment();
+        this.replicatorMetrics.get(currentTimeSeconds).get(Metric.EVENTS_SKIPPED).increment();
     }
 
     public void incHeartBeatCounter() {
@@ -158,7 +160,7 @@ public class ReplicatorMetrics {
         if (this.replicatorMetrics.get(currentTimeSeconds) == null) {
             initTimebucketIfKeyDoesNotExists(currentTimeSeconds);
         }
-        this.replicatorMetrics.get(currentTimeSeconds).get(Counters.HEART_BEAT_COUNTER).increment();
+        this.replicatorMetrics.get(currentTimeSeconds).get(Metric.HEART_BEAT_COUNTER).increment();
     }
 
     public void incApplierTasksSucceededCounter() {
@@ -166,6 +168,15 @@ public class ReplicatorMetrics {
         if (this.replicatorMetrics.get(currentTimeSeconds) == null) {
             initTimebucketIfKeyDoesNotExists(currentTimeSeconds);
         }
-        this.replicatorMetrics.get(currentTimeSeconds).get(Counters.APPLIER_TASKS_SUCCEEDED).increment();
+        this.replicatorMetrics.get(currentTimeSeconds).get(Metric.APPLIER_TASKS_SUCCEEDED).increment();
+    }
+
+    // TODO: add separate metrics for commitedToHBaseReplicationDelay
+    public void setReplicatorReplicationDelay(Long replicatorReplicationDelay) {
+        int currentTimeSeconds = (int) (System.currentTimeMillis() / 1000L);
+        if (this.replicatorMetrics.get(currentTimeSeconds) == null) {
+            initTimebucketIfKeyDoesNotExists(currentTimeSeconds);
+        }
+        this.replicatorMetrics.get(currentTimeSeconds).get(Metric.REPLICATION_DELAY_MS).setValue(replicatorReplicationDelay);
     }
 }
