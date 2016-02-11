@@ -6,7 +6,7 @@ for auditing purposes of historical data.
 In testing, beta-level quality.
 
 # USAGE
-java -jar hbrepl-0.9.5 --dc $dc --applier $applier --schema $schema --binlog-filename $binlog-filename --config-path $config-path --shard $shard
+java -jar hbrepl-0.9.5.jar --dc $dc --applier $applier --schema $schema --binlog-filename $binlog-filename --config-path $config-path --shard $shard
 
 # CONFIGURATION
 One yml file. Example of config file:
