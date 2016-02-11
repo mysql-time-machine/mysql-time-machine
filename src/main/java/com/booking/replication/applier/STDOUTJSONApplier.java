@@ -1,5 +1,6 @@
 package com.booking.replication.applier;
 
+import com.booking.replication.augmenter.AugmentedRow;
 import com.booking.replication.augmenter.AugmentedRowsEvent;
 import com.booking.replication.augmenter.AugmentedSchemaChangeEvent;
 import com.booking.replication.pipeline.PipelineOrchestrator;
@@ -23,10 +24,10 @@ public class STDOUTJSONApplier implements Applier {
     public void bufferData(AugmentedRowsEvent augmentedRowsEvent, PipelineOrchestrator caller) {
         eventCounter++;
         LOGGER.info("Number of rows in event => " +  augmentedRowsEvent.getSingleRowEvents().size());
-        // TODO: make this optionan with --verbose
-        //for (AugmentedRow row : augmentedRowsEvent.getSingleRowEvents()) {
-        //    System.out.println(row.toJSON());
-        //}
+        // TODO: make this part optional with --verbose-data
+        for (AugmentedRow row : augmentedRowsEvent.getSingleRowEvents()) {
+            System.out.println(row.toJSON());
+        }
     }
 
     @Override
@@ -38,12 +39,12 @@ public class STDOUTJSONApplier implements Applier {
     public void applyAugmentedSchemaChangeEvent(AugmentedSchemaChangeEvent augmentedSchemaChangeEvent, PipelineOrchestrator caller) {
         eventCounter++;
         String json = augmentedSchemaChangeEvent.toJSON();
-        // TODO: make this options with --verbose
-        //if (json != null) {
-        //   System.out.println("STDOUT Applier serving augmentedSchemaChangeEvent: \n" + json);
-        //}
-        //else {
-        //    System.out.println("Received empty event");
-        //}
+        // TODO: make this optional with --verbose-schema
+        if (json != null) {
+            System.out.println("STDOUT Applier serving augmentedSchemaChangeEvent: \n" + json);
+        }
+        else {
+            System.out.println("Received empty event");
+        }
     }
 }
