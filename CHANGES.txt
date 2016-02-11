@@ -1,5 +1,19 @@
 Revision history for MySQL-Time-Machine
 
+Release 0.9.6  Date/Time: 2016-02-11
+
+        [ENHANCEMENTS]
+        - Added replication delay metric.
+
+        [MINOR ENHANCEMENTS]
+        - Renamed Counters.java to Metrics.java since not all of the metrics are Counters.
+
+        [BUG FIXES]
+        - Handling utf8 and latin1 for MySQL TEXT types.
+        - MySQL BLOB handling: hex-ify and store as hex string in HBase.
+        - Timestamp handling: Store timestamp as a long number in HBase,
+          instead of its date-time representation in local timezone.
+
 Release 0.9.5  Date/Time: 2016-02-02
 
         [ENHANCEMENTS]
