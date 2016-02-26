@@ -11,7 +11,6 @@ import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 
 public class HBaseApplierTaskManager {
 
@@ -61,19 +60,26 @@ public class HBaseApplierTaskManager {
      * different transactions does not influence the end result since data will be timestamped with timestamps
      * from the binlog and if there are multiple operations on the same row all versions are kept in HBase.
      */
-    private final ConcurrentHashMap<String, Map<String, Map<String,List<Mutation>>>> tasksBuffer = new ConcurrentHashMap<String, Map<String, Map<String,List<Mutation>>>>();
+    private final
+            ConcurrentHashMap<String, Map<String, Map<String,List<Mutation>>>>
+            taskMutationBuffer = new ConcurrentHashMap<String, Map<String, Map<String,List<Mutation>>>>();
+
+    private final
+    ConcurrentHashMap<String, Map<String, Map<String,List<String>>>>
+            taskRowIDS = new ConcurrentHashMap<String, Map<String, Map<String,List<String>>>>();
+
+    /**
+     * Futures grouped by task UUID
+     */
+    private final
+            ConcurrentHashMap<String, Future<Void>>
+            taskFutures = new ConcurrentHashMap<String,Future<Void>>();
 
     /**
      * Status tracking helper structures
      */
-    private final ConcurrentHashMap<String, Integer> taskStatus = new ConcurrentHashMap<String,Integer>();
+    private final ConcurrentHashMap<String, Integer> taskStatus        = new ConcurrentHashMap<String,Integer>();
     private final ConcurrentHashMap<String, Integer> transactionStatus = new ConcurrentHashMap<String,Integer>();
-
-    /**
-     * Helper buffers
-     */
-    private final ConcurrentHashMap<String, Future<Integer>> submittedTasks = new ConcurrentHashMap<String,Future<Integer>>();
-    private final ConcurrentHashMap<String, Integer>         doneTasks      = new ConcurrentHashMap<String, Integer>();
 
     /**
      * Shared connection used by all tasks in applier
@@ -90,8 +96,6 @@ public class HBaseApplierTaskManager {
     private static volatile String currentTaskUUID;
     private static volatile String currentTransactionUUID;
 
-    // TODO: store these counters as graphite metrics
-    public AtomicLong    transactionsWritten = new AtomicLong(0);
     public AtomicInteger rowsBufferedCounter = new AtomicInteger(0);
 
     private final ReplicatorMetrics replicatorMetrics;
@@ -120,11 +124,13 @@ public class HBaseApplierTaskManager {
         currentTaskUUID = UUID.randomUUID().toString();
         currentTransactionUUID = UUID.randomUUID().toString();
 
-        tasksBuffer.put(currentTaskUUID, new HashMap<String, Map<String, List<Mutation>>>());
-        tasksBuffer.get(currentTaskUUID).put(currentTransactionUUID, new HashMap<String,List<Mutation>>());
+        taskMutationBuffer.put(currentTaskUUID, new HashMap<String, Map<String, List<Mutation>>>());
+        taskRowIDS.put(currentTaskUUID, new HashMap<String, Map<String, List<String>>>());
 
-        taskStatus.put(currentTaskUUID, TaskStatus.READY_FOR_BUFFERING);
+        taskMutationBuffer.get(currentTaskUUID).put(currentTransactionUUID, new HashMap<String,List<Mutation>>());
+        taskRowIDS.get(currentTaskUUID).put(currentTransactionUUID, new HashMap<String,List<String>>());
 
+        taskStatus.put(currentTaskUUID, TaskStatusCatalog.READY_FOR_BUFFERING);
         transactionStatus.put(currentTransactionUUID, TransactionStatus.OPEN);
 
     }
@@ -132,21 +138,39 @@ public class HBaseApplierTaskManager {
     // ================================================
     // Buffering util
     // ================================================
-    public void pushMutationToTaskBuffer(String tableName, Put put) {
+    public void pushMutationToTaskBuffer(String tableName, String hbRowKey, Put put) {
 
-        if (tasksBuffer.get(currentTaskUUID) == null) {
-            LOGGER.error("ERROR: Missing task UUID from tasksBuffer keySet. Should never happen. Shutting down...");
+        if (taskMutationBuffer.get(currentTaskUUID) == null) {
+            LOGGER.error("ERROR: Missing task UUID from taskMutationBuffer keySet. Should never happen. Shutting down...");
             System.exit(1);
         }
-        if (tasksBuffer.get(currentTaskUUID).get(currentTransactionUUID) == null) {
-            LOGGER.error("ERROR: Missing transaction UUID from tasksBuffer keySet. Should never happen. Shutting down...");
+        if (taskRowIDS.get(currentTaskUUID) == null) {
+            LOGGER.error("ERROR: Missing task UUID from taskRowIDS keySet. Should never happen. Shutting down...");
             System.exit(1);
         }
-        if (tasksBuffer.get(currentTaskUUID).get(currentTransactionUUID).get(tableName) == null) {
-            tasksBuffer.get(currentTaskUUID).get(currentTransactionUUID).put(tableName, new ArrayList<Mutation>());
+        if (taskMutationBuffer.get(currentTaskUUID).get(currentTransactionUUID) == null) {
+            LOGGER.error("ERROR: Missing transaction UUID from taskMutationBuffer keySet. Should never happen. Shutting down...");
+            System.exit(1);
+        }
+        if (taskRowIDS.get(currentTaskUUID).get(currentTransactionUUID) == null) {
+            LOGGER.error("ERROR: Missing transaction UUID from taskRowIDS keySet. Should never happen. Shutting down...");
+            for (String tid : taskRowIDS.get(currentTaskUUID).keySet()) {
+                LOGGER.info("current task => " + currentTaskUUID + ", current tid => " + currentTransactionUUID + ", available tid => " + tid);
+            }
+            System.exit(1);
+        }
+
+        if (taskMutationBuffer.get(currentTaskUUID).get(currentTransactionUUID).get(tableName) == null) {
+            taskMutationBuffer.get(currentTaskUUID).get(currentTransactionUUID).put(tableName, new ArrayList<Mutation>());
             // LOGGER.info("New table in uuid buffer " + uuid + ", initialized key for table " + tableName );
         }
-        tasksBuffer.get(currentTaskUUID).get(currentTransactionUUID).get(tableName).add(put);
+        if (taskRowIDS.get(currentTaskUUID).get(currentTransactionUUID).get(tableName) == null) {
+            taskRowIDS.get(currentTaskUUID).get(currentTransactionUUID).put(tableName, new ArrayList<String>());
+            // LOGGER.info("New table in uuid buffer " + uuid + ", initialized key for table " + tableName );
+        }
+
+        taskMutationBuffer.get(currentTaskUUID).get(currentTransactionUUID).get(tableName).add(put);
+        taskRowIDS.get(currentTaskUUID).get(currentTransactionUUID).get(tableName).add(hbRowKey);
 
         rowsBufferedCounter.incrementAndGet();
     }
@@ -159,66 +183,89 @@ public class HBaseApplierTaskManager {
         // mark
         transactionStatus.put(currentTransactionUUID, TransactionStatus.READY_FOR_COMMIT);
 
-        // set new transaction as current in the current task
+        // open a new transaction slot and set it as the current transaction
         currentTransactionUUID = UUID.randomUUID().toString();
-        tasksBuffer.get(currentTaskUUID).put(currentTransactionUUID, new HashMap<String,List<Mutation>>());
+        taskMutationBuffer.get(currentTaskUUID).put(currentTransactionUUID, new HashMap<String,List<Mutation>>());
+        taskRowIDS.get(currentTaskUUID).put(currentTransactionUUID, new HashMap<String,List<String>>());
         transactionStatus.put(currentTransactionUUID, TransactionStatus.OPEN);
     }
 
     public void flushCurrentTaskBuffer() {
 
         // mark current uuid buffer as READY_FOR_PICK_UP and create new uuid buffer
-        markCurrentAsReadyAndCreateNewUUIDBuffer(); // <- this one is blocking
+        markCurrentTaskAsReadyAndCreateNewUUIDBuffer(); // <- this one is blocking
         flushBufferedTask(); // <- current and those which previously failed
     }
 
-    private void markCurrentAsReadyAndCreateNewUUIDBuffer() {
+    private void markCurrentTaskAsReadyAndCreateNewUUIDBuffer() {
 
         // don't create new buffers if no slots available
         blockIfNoSlotsAvailableForBuffering();
 
         // mark current uuid buffer as READY_FOR_PICK_UP
-        taskStatus.put(currentTaskUUID, TaskStatus.READY_FOR_PICK_UP);
+        taskStatus.put(currentTaskUUID, TaskStatusCatalog.READY_FOR_PICK_UP);
 
         // create new uuid buffer
         String newTaskUUID = UUID.randomUUID().toString();
 
-        tasksBuffer.put(newTaskUUID, new HashMap<String, Map<String, List<Mutation>>>());
+        taskMutationBuffer.put(newTaskUUID, new HashMap<String, Map<String, List<Mutation>>>());
+        taskRowIDS.put(newTaskUUID, new HashMap<String, Map<String, List<String>>>());
 
         // Check if there is an open/unfinished transaction in current UUID task buffer and
         // if so, create/reserve the corresponding transaction UUID in the new UUID task buffer
         // so that the transaction rows that are on the way can be buffered under the same UUID.
-        // This is part of the TODO: when XID event is received and the end of transaction tie
+        // This is a foundation for the TODO: when XID event is received and the end of transaction tie
         // the transaction id from XID with the transaction UUID used for buffering. The goal is
         // to be able to identify mutations in HBase which were part of the same transaction.
-        for (String transactionUUID : tasksBuffer.get(currentTaskUUID).keySet()) {
+        int openTransactions = 0;
+        for (String transactionUUID : taskMutationBuffer.get(currentTaskUUID).keySet()) {
             if (transactionStatus.get(transactionUUID) == TransactionStatus.OPEN) {
-                tasksBuffer.get(newTaskUUID).put(transactionUUID, new HashMap<String,List<Mutation>>() );
+                openTransactions++;
+                if (openTransactions > 1) {
+                    LOGGER.error("More than one partial transaction in the buffer. Should never happen! Exiting...");
+                    System.exit(-1);
+                }
+                taskMutationBuffer.get(newTaskUUID).put(transactionUUID, new HashMap<String,List<Mutation>>() );
+                taskRowIDS.get(newTaskUUID).put(transactionUUID, new HashMap<String,List<String>>() );
+                currentTransactionUUID = transactionUUID; // <- important
             }
         }
 
-        taskStatus.put(newTaskUUID, TaskStatus.READY_FOR_BUFFERING);
+        taskStatus.put(newTaskUUID, TaskStatusCatalog.READY_FOR_BUFFERING);
 
         currentTaskUUID = newTaskUUID;
+
+        // update task queue size
+        long taskQueueSize = 0;
+        for (String taskUUID : taskStatus.keySet()) {
+            if (taskStatus.get(taskUUID) == TaskStatusCatalog.READY_FOR_PICK_UP) {
+                taskQueueSize++;
+            }
+        }
+        replicatorMetrics.setTaskQueueSize(taskQueueSize);
     }
 
     private void blockIfNoSlotsAvailableForBuffering() {
 
         boolean block = true;
+        int blockingTime = 0;
+
         while (block) {
 
             updateTaskStatuses();
 
-            int currentNumberOfTasks = tasksBuffer.keySet().size();
+            int currentNumberOfTasks = taskMutationBuffer.keySet().size();
 
             if (currentNumberOfTasks > POOL_SIZE) {
-                LOGGER.warn("To many tasks already open ( " + currentNumberOfTasks + " ), blocking further writes for 1s...");
-                LOGGER.info("Number of written transactions so far " + transactionsWritten.get());
                 try {
-                    Thread.sleep(1000);
+                    Thread.sleep(10);
+                    blockingTime += 10;
                 }
                 catch (InterruptedException e) {
                     LOGGER.error("Cant sleep.", e);
+                }
+                if ((blockingTime % 1000) == 0) {
+                    LOGGER.warn("To many tasks already open ( " + currentNumberOfTasks + " ), blocking time is " + blockingTime + "ms");
                 }
             }
             else {
@@ -227,75 +274,49 @@ public class HBaseApplierTaskManager {
         }
     }
 
-    /**
-     * Check the number of running tasks. If number < max number then we can spawn more.
-     * If number = max, then wait for at least one task to finish and only then give green
-     * light to continue (which means: do the clean up and create new transaction buffer slot)
-     * @return
-     */
     private void updateTaskStatuses() {
 
-        // 1. update doneTasks
-        for (String submittedTaskUUID : submittedTasks.keySet()) {
-            Future<Integer> task = submittedTasks.get(submittedTaskUUID);
-            try {
-                if (task.isDone()) {
+        // clean up and re-queue failed tasks
+        Set<String> taskFuturesUUIDs = taskFutures.keySet();
 
-                    Integer result = task.get();
+        for (String submitedTaskUUID : taskFuturesUUIDs) {
 
-                    if (result != null) {
-                        if (result == TaskStatus.WRITE_SUCCEEDED) {
+            Future<Void> taskFuture = taskFutures.get(submitedTaskUUID);
 
-                            // uuid buffer flushed, mark buffer with WRITE_SUCCEEDED
-                            doneTasks.put(submittedTaskUUID, TaskStatus.WRITE_SUCCEEDED);
-                            // LOGGER.info("+++WRITE_SUCCEEDED+++ Acknowledged by Applier!");
+            if (taskFuture.isDone()) {
 
-                        } else if (result == TaskStatus.WRITE_FAILED) {
+                if (taskStatus.get(submitedTaskUUID) == TaskStatusCatalog.WRITE_SUCCEEDED) {
 
-                            //  mark buffer with WRITE_FAILED
-                            LOGGER.warn("===WRITE_FAILED=== Acknowledged by Applier!");
-                            doneTasks.put(submittedTaskUUID, TaskStatus.WRITE_FAILED);
+                    taskStatus.remove(submitedTaskUUID);
 
-                        } else {
-                            LOGGER.error("vvv===UNKNOWN_STATUS===vvv [" + result + "] for transaction buffer " + submittedTaskUUID);
-                        }
-                    } else {
-                        LOGGER.error("Received null result from task for transaction buffer " + submittedTaskUUID);
-                    }
+                    taskMutationBuffer.remove(submitedTaskUUID); // <- if there are open transaction UUID in this task, they have been copied to new task
+                    taskRowIDS.remove(submitedTaskUUID); // <== --||--
+
+                    // since the task is done, remove the key from the futures hash
+                    taskFutures.remove(submitedTaskUUID);
+                } else if (taskStatus.get(submitedTaskUUID) == TaskStatusCatalog.WRITE_FAILED) {
+
+                    LOGGER.warn("Task " + submitedTaskUUID +
+                            " failed with status => " + taskStatus.get(submitedTaskUUID) +
+                            ". Task will be retried."
+                    );
+
+                    // remove the key from the futures hash; new future will be created
+                    taskFutures.remove(submitedTaskUUID);
+
+                    // keep the mutation buffer, just change the status so this task is picked up again
+                    taskStatus.put(submitedTaskUUID, TaskStatusCatalog.READY_FOR_PICK_UP);
+                } else {
+                    LOGGER.error("Task status error for STATUS => " + taskStatus.get(submitedTaskUUID).toString());
                 }
-            } catch (InterruptedException e) {
-                LOGGER.error("Could not get result from the fut ure. Interrupted exception", e);
-            } catch (ExecutionException e) {
-                Throwable te = e.getCause();
-                LOGGER.warn("Future task failed with exception => " + te.getMessage() + " " + te.getStackTrace());
-                LOGGER.info("Will re-queue the task.");
-                doneTasks.put(submittedTaskUUID, TaskStatus.WRITE_FAILED);
             }
-        }
-
-        // 2. clean up and re-queue failed tasks
-        for (String taskUUID : doneTasks.keySet()) {
-            if (doneTasks.get(taskUUID) == TaskStatus.WRITE_SUCCEEDED) {
-                replicatorMetrics.incApplierTasksSucceededCounter();
-                taskStatus.remove(taskUUID);
-                tasksBuffer.remove(taskUUID); // <- if there are open transaction UUID in this task, they have been copied to new task
-                // LOGGER.info("Successful task " + taskUUID + " removed from the hbaseApplierTaskManager pool");
-            }
-            else {
-                // keep the buffer, just change the status so this task is picked up again
-                LOGGER.warn("Task " + taskUUID + " failed with status => " + doneTasks.get(taskUUID) + ". Will re-queue");
-                taskStatus.put(taskUUID, TaskStatus.READY_FOR_PICK_UP);
-            }
-            submittedTasks.remove(taskUUID);
         }
     }
 
     /**
-     * Commit transactions that are fully buffered
+     * Submit tasks that are READY_FOR_PICK_UP
      */
     private void flushBufferedTask() {
-
-        //LOGGER.info("Submitting buffered transactions...");
 
         if (hbaseConnection == null) {
             LOGGER.info("HBase connection is gone. Will try to recreate new connection...");
@@ -316,27 +337,46 @@ public class HBaseApplierTaskManager {
             }
         }
 
+        if (hbaseConnection == null) {
+            LOGGER.error("Could not create HBase connection, all retry attempts failed. Exiting...");
+            System.exit(-1);
+        }
+
         // one future per task
         for (final String taskUUID : taskStatus.keySet()) {
 
-            if (taskStatus.get(taskUUID) == TaskStatus.READY_FOR_PICK_UP) {
+            if (taskStatus.get(taskUUID) == TaskStatusCatalog.READY_FOR_PICK_UP) {
 
-                submittedTasks.put(taskUUID, taskPool.submit(new Callable<Integer>() {
+                taskStatus.put(taskUUID,TaskStatusCatalog.TASK_SUBMITTED);
+                replicatorMetrics.incApplierTasksSubmittedCounter();
+
+                taskFutures.put(taskUUID, taskPool.submit(new Callable<Void>() {
 
                     @Override
-                    public Integer call() throws Exception {
-
-                        int numberOfTransactionsInTask = tasksBuffer.get(taskUUID).keySet().size();
+                    public Void call() throws Exception {
 
                         try {
 
-                            for (final String transactionUUID : tasksBuffer.get(taskUUID).keySet()) {
+                            int numberOfTransactionsInTask = taskMutationBuffer.get(taskUUID).keySet().size();
+                            long numberOfRowsInTask = 0;
+                            for (String transactionUUID : taskRowIDS.get(taskUUID).keySet()) {
+                                for (String tableName : taskRowIDS.get(taskUUID).get(transactionUUID).keySet()) {
+                                    List<String> bufferedIDs = taskRowIDS.get(taskUUID).get(transactionUUID).get(tableName);
+                                    int numberOfBufferedIDsForTable = bufferedIDs.size();
+                                    numberOfRowsInTask += numberOfBufferedIDsForTable;
+                                }
+                            }
 
-                                int numberOfTablesInCurrentTransaction = tasksBuffer.get(taskUUID).get(transactionUUID).keySet().size();
+                            taskStatus.put(taskUUID, TaskStatusCatalog.WRITE_IN_PROGRESS);
+                            replicatorMetrics.incApplierTasksInProgressCounter();
+
+                            for (final String transactionUUID : taskMutationBuffer.get(taskUUID).keySet()) {
+
+                                int numberOfTablesInCurrentTransaction = taskMutationBuffer.get(taskUUID).get(transactionUUID).keySet().size();
 
                                 int numberOfFlushedTablesInCurrentTransaction = 0;
 
-                                for (final String bufferedTableName : tasksBuffer.get(taskUUID).get(transactionUUID).keySet()) {
+                                for (final String bufferedTableName : taskMutationBuffer.get(taskUUID).get(transactionUUID).keySet()) {
 
                                     // One mutator and listener for each table in transaction (good for big transactions)
                                     TableName TABLE = TableName.valueOf(bufferedTableName);
@@ -346,21 +386,21 @@ public class HBaseApplierTaskManager {
                                             new BufferedMutator.ExceptionListener() {
                                                 @Override
                                                 public void onException(RetriesExhaustedWithDetailsException e, BufferedMutator mutator) {
+                                                    // This is callback is executed in mutator.flush()
                                                     for (int i = 0; i < e.getNumExceptions(); i++) {
-                                                        LOGGER.warn("Failed to send put to table " + bufferedTableName + e.getRow(i));
+                                                        LOGGER.error("Failed to send put to table " + bufferedTableName + e.getRow(i));
                                                     }
+                                                    taskStatus.put(taskUUID, TaskStatusCatalog.WRITE_FAILED);
                                                 }
                                             };
 
                                     // attach listener
                                     BufferedMutatorParams params = new BufferedMutatorParams(TABLE).listener(listener);
 
-                                    // getValue mutator
-                                    BufferedMutator mutator = hbaseConnection.getBufferedMutator(TABLE);
+                                    // get mutator
+                                    BufferedMutator mutator = hbaseConnection.getBufferedMutator(params);
 
-                                    taskStatus.put(taskUUID, TaskStatus.WRITE_IN_PROGRESS);
-
-                                    mutator.mutate(tasksBuffer.get(taskUUID).get(transactionUUID).get(bufferedTableName)); // <<- List<Mutation> for the given table
+                                    mutator.mutate(taskMutationBuffer.get(taskUUID).get(transactionUUID).get(bufferedTableName)); // <<- List<Mutation> for the given table
                                     mutator.flush(); // <- flush per table, but fork per batch (which can have many tables)
                                     mutator.close();
 
@@ -368,10 +408,15 @@ public class HBaseApplierTaskManager {
 
                                 } // next table
 
-                                if (numberOfTablesInCurrentTransaction == numberOfFlushedTablesInCurrentTransaction) {
-                                    transactionsWritten.incrementAndGet();
+                                // callback report
+                                if (taskStatus.get(taskUUID) == TaskStatusCatalog.WRITE_FAILED) {
+                                    throw new IOException(
+                                            "RetriesExhaustedWithDetailsException caught. Task " +
+                                            taskUUID + " failed."
+                                    );
                                 }
-                                else {
+
+                                if (numberOfTablesInCurrentTransaction != numberOfFlushedTablesInCurrentTransaction) {
                                     throw new IOException("Failed to write all tables in the transaction "
                                             + transactionUUID
                                             + ". Number of present tables => "
@@ -380,18 +425,28 @@ public class HBaseApplierTaskManager {
                                             + numberOfFlushedTablesInCurrentTransaction
                                     );
                                 }
-
                             } // next transaction
 
+                            taskStatus.put(taskUUID, TaskStatusCatalog.WRITE_SUCCEEDED);
+
+                            replicatorMetrics.incApplierTasksSucceededCounter();
+
+                            replicatorMetrics.deltaIncRowOpsSuccessfullyCommited(numberOfRowsInTask);
+
+                            //long totalRowsSoFar = replicatorMetrics.getTotalRowsSuccessfullyInserted();
+                            replicatorMetrics.incTotalRowOpsSuccessfullyCommited(numberOfRowsInTask);
+
                         } catch (IOException e) {
-                            LOGGER.error("Failed to flush buffer for transaction " + taskUUID + ". Marking this task for retry...", e);
-
-                            // TODO: not optimal to retry the whole task. Only failed transactions can be marked for retry
-                            taskStatus.put(taskUUID, TaskStatus.WRITE_FAILED);
-                            return TaskStatus.WRITE_FAILED;
+                            LOGGER.error(
+                                    "Failed to flush buffer for transaction " +
+                                    taskUUID +
+                                    ". Marking this task for retry...", e
+                            );
+                            // if one transaction fails, the whole task is retried.
+                            taskStatus.put(taskUUID, TaskStatusCatalog.WRITE_FAILED);
+                            replicatorMetrics.incApplierTasksFailedCounter();
                         }
-
-                        return TaskStatus.WRITE_SUCCEEDED;
+                        return null;
                     }
                 }));
             }

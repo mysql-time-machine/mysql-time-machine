@@ -35,21 +35,21 @@ import java.util.Map;
  */
 public class YAML {
 
-    private static final String SCHEMA_TRACKER = "schema_tracker";
+    private static final String SCHEMA_TRACKER = "schema_history";
 
     public static Configuration loadReplicatorConfiguration(StartupParameters startupParameters){
 
-        String dc             = startupParameters.getDc();
-        String schema         = startupParameters.getSchema();
-        String applier        = startupParameters.getApplier();
-        String binlogFilename = startupParameters.getBinlogFileName();
-        Long binlogPosition   = startupParameters.getBinlogPosition();
-        String configPath     = startupParameters.getConfigPath();
-        Integer shard         = startupParameters.getShard();
+        String  dc              = startupParameters.getDc();
+        String  schema          = startupParameters.getSchema();
+        String  applier         = startupParameters.getApplier();
+        String  binlogFilename  = startupParameters.getBinlogFileName();
+        Long    binlogPosition  = startupParameters.getBinlogPosition();
+        String  configPath      = startupParameters.getConfigPath();
+        Integer shard           = startupParameters.getShard();
+        Boolean useDeltaTables  = startupParameters.isDeltaTables();
+        Boolean initialSnapshot = startupParameters.isInitialSnapshot();
 
         Configuration rc = new Configuration();
-
-        Yaml yaml = new Yaml();
 
         // staring position
         rc.setStartingBinlogFileName(binlogFilename);
@@ -58,6 +58,14 @@ public class YAML {
         // dc
         rc.setReplicantDC(dc);
 
+        // delta tables
+        rc.setWriteRecentChangesToDeltaTables(useDeltaTables);
+
+        // initial snapshot mode
+        rc.setInitialSnapshotMode(initialSnapshot);
+
+        // yml
+        Yaml yaml = new Yaml();
         try {
             InputStream in = Files.newInputStream(Paths.get(configPath));
 
@@ -92,7 +100,7 @@ public class YAML {
 
                     rc.setActiveSchemaUserName((String) value.get("username"));
                     rc.setActiveSchemaPassword((String) value.get("password"));
-                    rc.setActiveSchemaHostsByDC((Map<String, String>) value.get("hosts"));
+                    rc.setActiveSchemaHostsByDC((Map<String, String>) value.get("host"));
                     rc.setActiveSchemaHost(rc.getActiveSchemaHostsByDC().get(dc));
                     if (shard > 0) {
                         rc.setActiveSchemaDB(schema + shard + "_" + Constants.ACTIVE_SCHEMA_SUFIX);

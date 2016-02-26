@@ -126,10 +126,8 @@ public class Overseer extends Thread {
                     // all is good
                 }
                 else {
-                    // initialize timebucket
-                    replicatorMetrics.initTimebucketIfKeyDoesNotExists(timebucket);
-                    // check again for data
-                    timebucketStats = replicatorMetrics.getMetrics().get(timebucket);
+                    LOGGER.warn("Metrics missing for timebucket " + timebucket);
+                    return;
                 }
 
                 for (Integer metricsID : timebucketStats.keySet()) {

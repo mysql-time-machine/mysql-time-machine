@@ -1,5 +1,22 @@
 Revision history for MySQL-Time-Machine
 
+Release 0.9.7  Date/Time: 2016-02-26
+
+        [ENHANCEMENTS]
+        - Added hbase-applier-tasks metrics
+		- Added counter-totals metrics
+		- Added initial-snapshot option
+
+        [MINOR ENHANCEMENTS]
+        - Refactored hbase applier to prepare structure for future features
+		- More debug info added to STDOUT applier
+		- Better naming of metrics
+
+        [BUG FIXES]
+		- fix for missing rows of the last task of initial snapshot in
+          the case when COMMIT query event does not contain database name.
+        - fix for NullPointer exception in ReplicatorMetrics.
+
 Release 0.9.6  Date/Time: 2016-02-11
 
         [ENHANCEMENTS]

@@ -15,6 +15,7 @@ import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.*;
 import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.hadoop.hbase.util.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,14 +44,14 @@ import java.security.MessageDigest;
 public class HBaseApplier implements Applier {
 
     // TODO: move configuration vars to Configuration
-    private static final int UUID_BUFFER_SIZE = 1000; // <- max number of rows in one uuid buffer
-    private static final int POOL_SIZE = 20;
+    private static final int UUID_BUFFER_SIZE = 500; // <- max number of rows in one uuid buffer
+    private static final int POOL_SIZE = 10;
 
     private static final String DIGEST_ALGORITHM = "MD5";
 
     private static final Logger LOGGER = LoggerFactory.getLogger(HBaseApplier.class);
 
-    private static final    Configuration hbaseConf = HBaseConfiguration.create();
+    private static final Configuration hbaseConf = HBaseConfiguration.create();
 
     private static final byte[] CF = Bytes.toBytes("d");
 
@@ -133,15 +134,13 @@ public class HBaseApplier implements Applier {
 
         String hbaseNamespace = null;
         if (currentTransactionDB != null) {
-            // LOGGER.info("currentTransactionDB => " + currentTransactionDB);
 
             if (currentTransactionDB.equals(mySQLDBName)) {
                 // regular data
-                // LOGGER.info("currentTransactionDB => " + currentTransactionDB);
                 hbaseNamespace = mySQLDBName.toLowerCase();
             }
             else if(currentTransactionDB.equals(Constants.BLACKLISTED_DB)) {
-                // LOGGER.info("skipping blacklisted db " + currentTransactionDB);
+                // skipping blacklisted db
                 return;
             }
             else {
@@ -158,127 +157,33 @@ public class HBaseApplier implements Applier {
 
         // 2. prepare and buffer Put objects for all rows in the received event
         for (AugmentedRow row : augmentedRowsEvent.getSingleRowEvents()) {
+
+            // vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+
             // 2. getValue table_name from event
             String mySQLTableName = row.getTableName();
             String hbaseTableName = hbaseNamespace + ":" + mySQLTableName.toLowerCase();
 
-            // RowID
-            List<String> pkColumnNames = row.getPrimaryKeyColumns(); // <- this is sorted by OP
-            List<String> pkColumnValues = new ArrayList<String>();
+            Pair<String,Put> idPut = getPut(row);
 
-            // LOGGER.info("table => " + mySQLTableName + ", pk columns => " + Joiner.on(";").join(pkColumnNames));
-
-            for (String pkColumnName : pkColumnNames) {
-
-                Map<String, String> pkCell = row.getEventColumns().get(pkColumnName);
-
-                if (row.getEventType().equals("INSERT") || row.getEventType().equals("DELETE")) {
-                    pkColumnValues.add(pkCell.get("value"));
-                } else if (row.getEventType().equals("UPDATE")) {
-                    pkColumnValues.add(pkCell.get("value_after"));
-                } else {
-                    LOGGER.error("Wrong event type. Expected RowType event.");
-                }
-            }
-
-            String hbaseRowID = Joiner.on(";").join(pkColumnValues);
-            String saltingPartOfKey = pkColumnValues.get(0);
-
-            // avoid region hot-spotting
-            hbaseRowID = saltRowKey(hbaseRowID, saltingPartOfKey);
-
-            Put p = new Put(Bytes.toBytes(hbaseRowID));
-
-            if (row.getEventType().equals("DELETE")) {
-
-                // No need to process columns on DELETE. Only write delete marker.
-
-                Long columnTimestamp = row.getEventV4Header().getTimestamp();
-                String columnName  = "row_status";
-                String columnValue = "D";
-                p.addColumn(
-                        CF,
-                        Bytes.toBytes(columnName),
-                        columnTimestamp,
-                        Bytes.toBytes(columnValue)
-                );
-            }
-            else if (row.getEventType().equals("UPDATE")) {
-
-                // Only write values that have changed
-
-                Long columnTimestamp = row.getEventV4Header().getTimestamp();
-                String columnValue;
-
-                for (String columnName : row.getEventColumns().keySet()) {
-
-                    String valueBefore = row.getEventColumns().get(columnName).get("value_before");
-                    String valueAfter  = row.getEventColumns().get(columnName).get("value_after");
-
-                    if ((valueAfter == null) && (valueBefore == null)) {
-                        // no change, skip;
-                    }
-                    else if (
-                            ((valueBefore == null) && (valueAfter != null))
-                            ||
-                            ((valueBefore != null) && (valueAfter == null))
-                            ||
-                            (!valueAfter.equals(valueBefore))) {
-
-                        columnValue = valueAfter;
-                        p.addColumn(
-                                CF,
-                                Bytes.toBytes(columnName),
-                                columnTimestamp,
-                                Bytes.toBytes(columnValue)
-                        );
-                    }
-                    else {
-                        // no change, skip
-                    }
-                }
-
-                p.addColumn(
-                        CF,
-                        Bytes.toBytes("row_status"),
-                        columnTimestamp,
-                        Bytes.toBytes("U")
-                );
-            }
-            else if (row.getEventType().equals("INSERT")) {
-
-                Long columnTimestamp = row.getEventV4Header().getTimestamp();
-                String columnValue;
-
-                for (String columnName : row.getEventColumns().keySet()) {
-
-                    columnValue = row.getEventColumns().get(columnName).get("value");
-                    if (columnValue == null) {
-                        columnValue = "NULL";
-                    }
-
-                    p.addColumn(
-                            CF,
-                            Bytes.toBytes(columnName),
-                            columnTimestamp,
-                            Bytes.toBytes(columnValue)
-                    );
-                }
-
-                p.addColumn(
-                    CF,
-                    Bytes.toBytes("row_status"),
-                    columnTimestamp,
-                    Bytes.toBytes("I")
-                );
-            }
-            else {
-                LOGGER.error("ERROR: Wrong event type. Expected RowType event. Shutting down...");
-                System.exit(1);
-            }
+            String id = idPut.getFirst();
+            Put p = idPut.getSecond();
 
             // Push to buffer
-            hbaseApplierTaskManager.pushMutationToTaskBuffer(hbaseTableName, p);
+            hbaseApplierTaskManager.pushMutationToTaskBuffer(hbaseTableName, id, p);
+
+
+            // TODO: write same row to delta table if --delta option is on
+
+            // Delta tables have 2 important differences:
+            //
+            // 1. Columns have only 1 version
+            //
+            // 2. we are storing entire row (insted only the changes columns - since 1.)
+            //
+            // ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+
         } // next row
 
         // Flush on buffer size limit
@@ -286,6 +191,127 @@ public class HBaseApplier implements Applier {
             hbaseApplierTaskManager.flushCurrentTaskBuffer();
             hbaseApplierTaskManager.rowsBufferedCounter.set(0);
         }
+    }
+
+    private Pair<String,Put> getPut(AugmentedRow row) {
+
+        // RowID
+        List<String> pkColumnNames = row.getPrimaryKeyColumns(); // <- this is sorted by column OP
+        List<String> pkColumnValues = new ArrayList<String>();
+
+        // LOGGER.info("table => " + mySQLTableName + ", pk columns => " + Joiner.on(";").join(pkColumnNames));
+
+        for (String pkColumnName : pkColumnNames) {
+
+            Map<String, String> pkCell = row.getEventColumns().get(pkColumnName);
+
+            if (row.getEventType().equals("INSERT") || row.getEventType().equals("DELETE")) {
+                pkColumnValues.add(pkCell.get("value"));
+            } else if (row.getEventType().equals("UPDATE")) {
+                pkColumnValues.add(pkCell.get("value_after"));
+            } else {
+                LOGGER.error("Wrong event type. Expected RowType event.");
+            }
+        }
+
+        String hbaseRowID = Joiner.on(";").join(pkColumnValues);
+        String saltingPartOfKey = pkColumnValues.get(0);
+
+        // avoid region hot-spotting
+        hbaseRowID = saltRowKey(hbaseRowID, saltingPartOfKey);
+
+        Put p = new Put(Bytes.toBytes(hbaseRowID));
+
+        if (row.getEventType().equals("DELETE")) {
+
+            // No need to process columns on DELETE. Only write delete marker.
+
+            Long columnTimestamp = row.getEventV4Header().getTimestamp();
+            String columnName  = "row_status";
+            String columnValue = "D";
+            p.addColumn(
+                    CF,
+                    Bytes.toBytes(columnName),
+                    columnTimestamp,
+                    Bytes.toBytes(columnValue)
+            );
+        }
+        else if (row.getEventType().equals("UPDATE")) {
+
+            // Only write values that have changed
+
+            Long columnTimestamp = row.getEventV4Header().getTimestamp();
+            String columnValue;
+
+            for (String columnName : row.getEventColumns().keySet()) {
+
+                String valueBefore = row.getEventColumns().get(columnName).get("value_before");
+                String valueAfter  = row.getEventColumns().get(columnName).get("value_after");
+
+                if ((valueAfter == null) && (valueBefore == null)) {
+                    // no change, skip;
+                }
+                else if (
+                        ((valueBefore == null) && (valueAfter != null))
+                        ||
+                        ((valueBefore != null) && (valueAfter == null))
+                        ||
+                        (!valueAfter.equals(valueBefore))) {
+
+                    columnValue = valueAfter;
+                    p.addColumn(
+                            CF,
+                            Bytes.toBytes(columnName),
+                            columnTimestamp,
+                            Bytes.toBytes(columnValue)
+                    );
+                }
+                else {
+                    // no change, skip
+                }
+            }
+
+            p.addColumn(
+                    CF,
+                    Bytes.toBytes("row_status"),
+                    columnTimestamp,
+                    Bytes.toBytes("U")
+            );
+        }
+        else if (row.getEventType().equals("INSERT")) {
+
+            Long columnTimestamp = row.getEventV4Header().getTimestamp();
+            String columnValue;
+
+            for (String columnName : row.getEventColumns().keySet()) {
+
+                columnValue = row.getEventColumns().get(columnName).get("value");
+                if (columnValue == null) {
+                    columnValue = "NULL";
+                }
+
+                p.addColumn(
+                        CF,
+                        Bytes.toBytes(columnName),
+                        columnTimestamp,
+                        Bytes.toBytes(columnValue)
+                );
+            }
+
+            p.addColumn(
+                CF,
+                Bytes.toBytes("row_status"),
+                columnTimestamp,
+                Bytes.toBytes("I")
+            );
+        }
+        else {
+            LOGGER.error("ERROR: Wrong event type. Expected RowType event. Shutting down...");
+            System.exit(1);
+        }
+
+        Pair<String,Put> idPut = new Pair<>(hbaseRowID,p);
+        return idPut;
     }
 
     private void markCurrentTransactionForCommit() {

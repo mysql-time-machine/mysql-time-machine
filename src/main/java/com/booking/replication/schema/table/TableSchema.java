@@ -11,6 +11,9 @@ public class TableSchema {
 
     private HashMap<Integer,String> columnIndexToColumnNameMap = new HashMap<Integer,String>();
 
+    // TODO: load table CHARACTER_SET_NAME
+    private String CHARACTER_SET_NAME;
+
     public TableSchema() {
         columns = new HashMap<String, ColumnSchema>();
     }

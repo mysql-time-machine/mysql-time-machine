@@ -59,7 +59,6 @@ public class HBaseSchemaManager {
 
                 HTableDescriptor tableDescriptor = new HTableDescriptor(TableName.valueOf(hbaseTableName));
                 HColumnDescriptor cd = new HColumnDescriptor("d");
-                // TODO: make number of versions an option in config
                 cd.setMaxVersions(1000);
                 tableDescriptor.addFamily(cd);
 

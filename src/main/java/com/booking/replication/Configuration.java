@@ -25,16 +25,18 @@ public class Configuration {
     private String metaDataDBName;
 
     // Replicant DB
-    private String replicantDC;
-    private String replicantSchemaName;
-    private String replicantDBUserName;
-    private String replicantDBPassword;
-    private int    replicantDBServerID;
-    private int    replicantPort;
+    private String  replicantDC;
+    private String  replicantSchemaName;
+    private String  replicantDBUserName;
+    private String  replicantDBPassword;
+    private int     replicantDBServerID;
+    private int     replicantPort;
     private Integer replicantShardID;
-    private long   startingBinlogPosition;
-    private String startingBinlogFileName;
-    private String replicantDBActiveHost; // <- by default first slave in the list
+    private boolean writeRecentChangesToDeltaTables;
+    private boolean initialSnapshotMode;
+    private long    startingBinlogPosition;
+    private String  startingBinlogFileName;
+    private String  replicantDBActiveHost; // <- by default first slave in the list
     private Map<String,List<String>> replicantDBSlavesByDC;
 
     private String ZOOKEEPER_QUORUM;
@@ -66,6 +68,9 @@ public class Configuration {
                 .append("\n")
                 .append("\tapplierType           : ")
                 .append(applierType)
+                .append(",\n")
+                .append("\tdeltaTables           : ")
+                .append(writeRecentChangesToDeltaTables)
                 .append(",\n")
                 .append("\treplicantDC           : ")
                 .append(replicantDC)
@@ -254,5 +259,21 @@ public class Configuration {
 
     public void setGraphiteStatsNamesapce(String graphiteStatsNamesapce) {
         this.graphiteStatsNamesapce = graphiteStatsNamesapce;
+    }
+
+    public boolean isWriteRecentChangesToDeltaTables() {
+        return writeRecentChangesToDeltaTables;
+    }
+
+    public void setWriteRecentChangesToDeltaTables(boolean writeRecentChangesToDeltaTables) {
+        this.writeRecentChangesToDeltaTables = writeRecentChangesToDeltaTables;
+    }
+
+    public boolean isInitialSnapshotMode() {
+        return initialSnapshotMode;
+    }
+
+    public void setInitialSnapshotMode(boolean initialSnapshotMode) {
+        this.initialSnapshotMode = initialSnapshotMode;
     }
 }

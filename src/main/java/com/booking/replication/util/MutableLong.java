@@ -5,7 +5,15 @@ package com.booking.replication.util;
  */
 public class MutableLong {
 
-    private long value = 0;
+    private long value;
+
+    public MutableLong() {
+        value = 0;
+    }
+
+    public MutableLong(long val) {
+        value = val;
+    }
 
     public void increment () {
         value++;

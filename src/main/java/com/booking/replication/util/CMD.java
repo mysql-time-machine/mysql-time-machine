@@ -19,6 +19,8 @@ public class CMD {
         parser.accepts("position").withRequiredArg().ofType(Long.class);
         parser.accepts("config-path").withRequiredArg().ofType(String.class);
         parser.accepts("shard").withRequiredArg().ofType(Integer.class);
+        parser.accepts("delta");
+        parser.accepts("initial-snapshot");
 
         OptionSet options = parser.parse(args);
 

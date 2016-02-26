@@ -59,6 +59,8 @@ public class PipelineOrchestrator extends Thread {
     public final Configuration configuration;
     private final Applier applier;
 
+    private final long timeStarted;
+
     public long consumerStatsNumberOfProcessedRows = 0;
     public long consumerStatsNumberOfProcessedEvents = 0;
 
@@ -140,6 +142,7 @@ public class PipelineOrchestrator extends Thread {
                 +   ((BinlogPositionInfo) lastKnownInfo.get(Constants.LAST_KNOWN_BINLOG_POSITION)).getBinlogPosition()
                 + " }"
         );
+        timeStarted = System.currentTimeMillis();;
     }
 
     public boolean isRunning() {
@@ -242,11 +245,13 @@ public class PipelineOrchestrator extends Thread {
             // DDL Event:
             case MySQLConstants.QUERY_EVENT:
                 fakeMicrosecondCounter++;
-                injectFakeMicroSecondsIntoEventTimestamp(event);
+                doTimestampOverride(event);
                 String querySQL = ((QueryEvent) event).getSql().toString();
                 if (isCOMMIT(querySQL)) {
                     replicatorMetrics.incCommitQueryCounter();
                     applier.applyCommitQueryEvent((QueryEvent) event);
+                }
+                else if (isBEGIN(querySQL)) {
                     currentTransactionMetadata = null;
                     currentTransactionMetadata = new CurrentTransactionMetadata();
                 }
@@ -275,11 +280,11 @@ public class PipelineOrchestrator extends Thread {
                     // exception is that when we see this event we reset the fake-microseconds counter.
                     LOGGER.debug("fakeMicrosecondCounter before reset => " + fakeMicrosecondCounter);
                     fakeMicrosecondCounter = 0;
-                    injectFakeMicroSecondsIntoEventTimestamp(event);
+                    doTimestampOverride(event);
                     replicatorMetrics.incHeartBeatCounter();
                 } else {
                     fakeMicrosecondCounter++;
-                    injectFakeMicroSecondsIntoEventTimestamp(event);
+                    doTimestampOverride(event);
                 }
                 try {
                     currentTransactionMetadata.updateCache((TableMapEvent) event);
@@ -310,7 +315,7 @@ public class PipelineOrchestrator extends Thread {
             case MySQLConstants.UPDATE_ROWS_EVENT:
             case MySQLConstants.UPDATE_ROWS_EVENT_V2:
                 fakeMicrosecondCounter++;
-                injectFakeMicroSecondsIntoEventTimestamp(event);
+                doTimestampOverride(event);
                 tStart = System.currentTimeMillis();
                 augmentedRowsEvent = eventAugmenter.mapDataEventToSchema((AbstractRowEvent) event, this);
                 tEnd = System.currentTimeMillis();
@@ -324,7 +329,7 @@ public class PipelineOrchestrator extends Thread {
             case MySQLConstants.WRITE_ROWS_EVENT:
             case MySQLConstants.WRITE_ROWS_EVENT_V2:
                 fakeMicrosecondCounter++;
-                injectFakeMicroSecondsIntoEventTimestamp(event);
+                doTimestampOverride(event);
                 tStart = System.currentTimeMillis();
                 augmentedRowsEvent = eventAugmenter.mapDataEventToSchema((AbstractRowEvent) event, this);
                 tEnd = System.currentTimeMillis();
@@ -338,7 +343,7 @@ public class PipelineOrchestrator extends Thread {
             case MySQLConstants.DELETE_ROWS_EVENT:
             case MySQLConstants.DELETE_ROWS_EVENT_V2:
                 fakeMicrosecondCounter++;
-                injectFakeMicroSecondsIntoEventTimestamp(event);
+                doTimestampOverride(event);
                 tStart = System.currentTimeMillis();
                 augmentedRowsEvent = eventAugmenter.mapDataEventToSchema((AbstractRowEvent) event, this);
                 tEnd = System.currentTimeMillis();
@@ -354,7 +359,7 @@ public class PipelineOrchestrator extends Thread {
                 // (so we can know if events were in the same transaction).
                 // For now we just increase the counter.
                 fakeMicrosecondCounter++;
-                injectFakeMicroSecondsIntoEventTimestamp(event);
+                doTimestampOverride(event);
                 applier.applyXIDEvent((XidEvent) event);
                 replicatorMetrics.incXIDCounter();
                 currentTransactionMetadata = null;
@@ -403,6 +408,27 @@ public class PipelineOrchestrator extends Thread {
 
         consumerTimeM2 += tDelta;
         return isDDL;
+    }
+
+    public boolean isBEGIN(String querySQL) {
+
+        boolean isBEGIN;
+
+        // optimization
+        if (querySQL.equals("COMMIT")) {
+            isBEGIN = false;
+        }
+        else {
+
+            String beginPattern = "(begin)";
+
+            Pattern p = Pattern.compile(beginPattern, Pattern.CASE_INSENSITIVE);
+
+            Matcher m = p.matcher(querySQL);
+
+            isBEGIN = m.find();
+        }
+        return isBEGIN;
     }
 
     public boolean isCOMMIT(String querySQL) {
@@ -480,20 +506,51 @@ public class PipelineOrchestrator extends Thread {
                 String querySQL  = ((QueryEvent) event).getSql().toString();
                 boolean isDDL    = isDDL(querySQL);
                 boolean isCOMMIT = isCOMMIT(querySQL);
-                String dbName = ((QueryEvent) event).getDatabaseName().toString();
-                if (isReplicant(dbName)) {
-                    if ((isDDL || isCOMMIT)) {
+                boolean isBEGIN  = isBEGIN(querySQL);
+                if (isCOMMIT) {
+                    // COMMIT does not always contain database name so we get it
+                    // from current transaction metadata.
+                    // There is an asuumption that all tables in the transaction
+                    // are from the same database. Cross database transactions
+                    // are not supported.
+                    TableMapEvent firstMapEvent = currentTransactionMetadata.getFirstMapEventInTransaction();
+                    if (firstMapEvent != null) {
+                        String currentTransactionDBName = firstMapEvent.getDatabaseName().toString();
+                        if (isReplicant(currentTransactionDBName)) {
+                            eventIsTracked = true;
+                        } else {
+                            LOGGER.warn("non-replicated database [" + currentTransactionDBName + "] in current transaction.");
+                        }
+                    }
+                    else {
+                        String message = "";
+                        for (String tblName : currentTransactionMetadata.getCurrentTransactionTableMapEvents().keySet()) {
+                            message += tblName;
+                            message += ", ";
+                        }
+                        LOGGER.warn("Received COMMIT event, but currentTransactionMetadata is empty! " +
+                                "Tables in transaction are " + message
+                        );
+                    }
+                }
+                else if (isBEGIN) {
+                    eventIsTracked = true;
+                }
+                else if (isDDL) {
+                    // DDL event should alwyas contain db name
+                    String dbName = ((QueryEvent) event).getDatabaseName().toString();
+                    if (isReplicant(dbName)) {
                         eventIsTracked = true;
                     }
                     else {
-                        if (!querySQL.equals("BEGIN")) {
-                            eventIsTracked = false;
-                            LOGGER.warn("Received non-DDL, non-COMMIT, non-BEGIN statement: " + querySQL);
-                        }
+                        eventIsTracked = false;
+                        LOGGER.warn("DDL statement " + querySQL + " on non-replicated database [" + dbName + "].");
+
                     }
                 }
                 else {
-                    // LOGGER.debug("non-replicant db event for db: " + dbName);
+                    // TODO: handle View statement
+                    // LOGGER.warn("Received non-DDL, non-COMMIT, non-BEGIN query");
                 }
                 break;
 
@@ -554,9 +611,22 @@ public class PipelineOrchestrator extends Thread {
         return  skipEvent;
     }
 
-    private void injectFakeMicroSecondsIntoEventTimestamp(BinlogEventV4 event) {
-
+    private void doTimestampOverride(BinlogEventV4 event) {
         long tStart = System.currentTimeMillis();
+
+        if (this.configuration.isInitialSnapshotMode()) {
+            doInitialSnapshotEventTimestampOverride(event);
+        }
+        else {
+            injectFakeMicroSecondsIntoEventTimestamp(event);
+        }
+        long tEnd = System.currentTimeMillis();
+        long tDelta = tEnd - tStart;
+
+        consumerTimeM4 += tDelta;
+    }
+
+    private void injectFakeMicroSecondsIntoEventTimestamp(BinlogEventV4 event) {
 
         long overriddenTimestamp = event.getHeader().getTimestamp();
 
@@ -567,10 +637,17 @@ public class PipelineOrchestrator extends Thread {
             overriddenTimestamp += fakeMicrosecondCounter;
             ((BinlogEventV4HeaderImpl)(event.getHeader())).setTimestamp(overriddenTimestamp);
         }
-        long tEnd = System.currentTimeMillis();
-        long tDelta = tEnd - tStart;
+    }
 
-        consumerTimeM4 += tDelta;
+    // set initial snapshot time to unix epoch.
+    private void doInitialSnapshotEventTimestampOverride(BinlogEventV4 event) {
+
+        long overriddenTimestamp = event.getHeader().getTimestamp();
+
+        if (overriddenTimestamp != 0) {
+            overriddenTimestamp = 0;
+            ((BinlogEventV4HeaderImpl)(event.getHeader())).setTimestamp(overriddenTimestamp);
+        }
     }
 
     private void updateLastKnownPositionForMapEvent(TableMapEvent event) {

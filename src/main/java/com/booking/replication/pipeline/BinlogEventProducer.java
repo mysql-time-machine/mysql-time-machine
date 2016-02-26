@@ -94,7 +94,7 @@ public class BinlogEventProducer {
                             if (added) {
                                 opCounter++;
                                 eventQueued = true;
-                                if (opCounter % 10000 == 0) {
+                                if (opCounter % 100000 == 0) {
                                     LOGGER.info("Producer reporting queue size => " + queue.size());
                                 }
                             }

@@ -3,19 +3,22 @@ package com.booking.replication.util;
 import joptsimple.OptionSet;
 import org.apache.commons.cli.MissingArgumentException;
 import org.apache.commons.lang.StringUtils;
+import org.apache.log4j.Logger;
 
 /**
  * Created by bdevetak on 01/12/15.
  */
 public class StartupParameters {
 
-    private String configPath;
-    private String dc;
-    private String schema;
-    private String applier;
-    private String binlogFileName;
-    private Long   binlogPosition;
+    private String  configPath;
+    private String  dc;
+    private String  schema;
+    private String  applier;
+    private String  binlogFileName;
+    private Long    binlogPosition;
     private Integer shard;
+    private boolean deltaTables;
+    private boolean initialSnapshot;
 
     private static final String DEFAULT_BINLOG_FILENAME_PATERN = "mysql-bin.";
 
@@ -27,6 +30,22 @@ public class StartupParameters {
         }
         else {
             dc = "dc1";
+        }
+
+        // use delta tables
+        if (o.has("delta")) {
+            deltaTables = true;
+        }
+        else {
+            deltaTables = false;
+        }
+
+        // initial snapshot mode
+        if (o.has("initial-snapshot")) {
+            initialSnapshot = true;
+        }
+        else {
+            initialSnapshot = false;
         }
 
         // schema
@@ -87,6 +106,7 @@ public class StartupParameters {
         System.out.println("\tapplier:         " + applier);
         System.out.println("\tbinlog-filename: " + binlogFileName);
         System.out.println("\tposition:        " + binlogPosition);
+        System.out.println("\tinitial-snapshot:" + initialSnapshot);
         System.out.println("----------------------------------------------\n");
 
     }
@@ -145,5 +165,13 @@ public class StartupParameters {
 
     public void setShard(Integer shard) {
         this.shard = shard;
+    }
+
+    public boolean isDeltaTables() {
+        return deltaTables;
+    }
+
+    public boolean isInitialSnapshot() {
+        return initialSnapshot;
     }
 }
