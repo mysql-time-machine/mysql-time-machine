@@ -14,10 +14,10 @@ java -jar hbrepl-0.9.7.jar --dc $dc --applier $applier --schema $schema --binlog
 # CONFIGURATION
 One yml file. Example of config file:
 
-    schema_tracker:
+    schema_history:
         username: 'user'
         password: 'pass'
-        hosts:
+        host:
             dc1: 'dc1-host'
             dc2: 'dc2-host'
     replicated_schema_name:

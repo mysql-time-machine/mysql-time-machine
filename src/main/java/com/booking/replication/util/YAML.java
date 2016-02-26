@@ -15,10 +15,10 @@ import java.util.Map;
  *
  * This is the structure of the config file:
  *
- *     schema_tracker:
+ *     schema_history:
  *         username: '<username>'
  *         password: '<password>'
- *         hosts:
+ *         host:
  *             dc1: 'host-1'
  *             dc2: 'host-2'
  *     replicated_schema_name:
