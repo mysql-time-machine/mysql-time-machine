@@ -44,6 +44,19 @@ public class JSONBuilder {
         String json = null;
         try {
             ObjectMapper mapper = new ObjectMapper();
+            json = mapper.writeValueAsString(augmentedRow);
+        } catch (IOException e) {
+            System.out.println("ERROR: could not serialize event");
+            e.printStackTrace();
+        }
+        return json;
+    }
+
+    public static String dataEventToJSONPrettyPrinter (AugmentedRow augmentedRow){
+
+        String json = null;
+        try {
+            ObjectMapper mapper = new ObjectMapper();
             json = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(augmentedRow);
         } catch (IOException e) {
             System.out.println("ERROR: could not serialize event");
