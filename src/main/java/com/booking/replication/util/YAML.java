@@ -2,6 +2,8 @@ package com.booking.replication.util;
 
 import com.booking.replication.Configuration;
 import com.booking.replication.Constants;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.InputStream;
@@ -35,6 +37,8 @@ import java.util.Map;
  */
 public class YAML {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(YAML.class);
+
     private static final String SCHEMA_TRACKER = "schema_history";
 
     public static Configuration loadReplicatorConfiguration(StartupParameters startupParameters){
@@ -57,6 +61,11 @@ public class YAML {
 
         // dc
         rc.setReplicantDC(dc);
+
+        if (useDeltaTables == true && initialSnapshot == true) {
+            LOGGER.error("delta tables and initial snapshots are mutually exclusive!");
+            System.exit(1);
+        }
 
         // delta tables
         rc.setWriteRecentChangesToDeltaTables(useDeltaTables);
