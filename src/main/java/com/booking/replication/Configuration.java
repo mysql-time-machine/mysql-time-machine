@@ -93,8 +93,14 @@ public class Configuration {
                 .append("\tactiveSchemaHost      : ")
                 .append(activeSchemaHost)
                 .append(",\n")
-                .append("\tgraphiteStatsNamesapce      : ")
+                .append("\tgraphiteStatsNamesapce: ")
                 .append(graphiteStatsNamesapce)
+                .append(",\n")
+                .append("\tdeltaTables           : ")
+                .append(writeRecentChangesToDeltaTables)
+                .append(",\n")
+                .append("\tinitialSnapshotMode   : ")
+                .append(initialSnapshotMode)
                 .append(",\n")
                 .toString();
 
