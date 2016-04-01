@@ -7,9 +7,9 @@ In testing, beta-level quality.
 
 # USAGE
 ### Initial snapshot
-java -jar hbrepl-0.9.7.jar --dc $dc --applier $applier --schema $schema --binlog-filename $first-binlog-filename --config-path $config-path --shard $shard --initial-snapshot
+java -jar hbrepl-0.9.8.jar --dc $dc --applier $applier --schema $schema --binlog-filename $first-binlog-filename --config-path $config-path --shard $shard --initial-snapshot
 ### Replication
-java -jar hbrepl-0.9.7.jar --dc $dc --applier $applier --schema $schema --binlog-filename $binlog-filename --config-path $config-path --shard $shard
+java -jar hbrepl-0.9.8.jar --dc $dc --applier $applier --schema $schema --binlog-filename $binlog-filename --config-path $config-path --shard $shard --delta
 
 # CONFIGURATION
 One yml file. Example of config file:
@@ -31,6 +31,8 @@ One yml file. Example of config file:
         dc2: 'hbase-dc2-zk1-host, ..., hbase-dc2-zk5-host'
     graphite:
         namespace: 'my.graphite.namespace'
+    hive_imports:
+        replicated_schema_name: ['table_1', ..., 'table_N']
 
 # AUTHOR
 Bosko Devetak <bosko.devetak@gmail.com>
