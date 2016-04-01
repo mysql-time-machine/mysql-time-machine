@@ -224,8 +224,8 @@ public class EventAugmenter {
             augEvent.setEventType("INSERT");
             augEvent.setEventV4Header(writeRowsEvent.getHeader());
 
-            replicatorMetrics.incRowsInsertedCounter();
-            replicatorMetrics.incRowsProcessedCounter();
+            replicatorMetrics.incRowsInsertedCounter(tableName);
+            replicatorMetrics.incRowsProcessedCounter(tableName);
 
             // caller.incRowsInsertedCounter();
             // caller.incRowsProcessedCounter();
@@ -273,8 +273,8 @@ public class EventAugmenter {
         
         for (Row row : writeRowsEvent.getRows()) {
 
-            replicatorMetrics.incRowsInsertedCounter();
-            replicatorMetrics.incRowsProcessedCounter();
+            replicatorMetrics.incRowsInsertedCounter(tableName);
+            replicatorMetrics.incRowsProcessedCounter(tableName);
 
             AugmentedRow augEvent = new AugmentedRow();
 
@@ -330,8 +330,8 @@ public class EventAugmenter {
         for (Row row : deleteRowsEvent.getRows()) {
 
             // caller.incRowsProcessedCounter();
-            replicatorMetrics.incRowsDeletedCounter();
-            replicatorMetrics.incRowsProcessedCounter();
+            replicatorMetrics.incRowsDeletedCounter(tableName);
+            replicatorMetrics.incRowsProcessedCounter(tableName);
 
             AugmentedRow augEvent = new AugmentedRow();
             augEvent.setTableName(tableName);
@@ -383,8 +383,8 @@ public class EventAugmenter {
         for (Row row : deleteRowsEvent.getRows()) {
 
             // caller.incRowsProcessedCounter();
-            replicatorMetrics.incRowsDeletedCounter();
-            replicatorMetrics.incRowsProcessedCounter();
+            replicatorMetrics.incRowsDeletedCounter(tableName);
+            replicatorMetrics.incRowsProcessedCounter(tableName);
 
             AugmentedRow augEvent = new AugmentedRow();
             augEvent.setTableName(tableName);
@@ -438,8 +438,8 @@ public class EventAugmenter {
         for (Pair<Row> rowPair : upEvent.getRows()) {
 
             // caller.incRowsProcessedCounter();
-            replicatorMetrics.incRowsUpdatedCounter();
-            replicatorMetrics.incRowsProcessedCounter();
+            replicatorMetrics.incRowsUpdatedCounter(tableName);
+            replicatorMetrics.incRowsProcessedCounter(tableName);
 
             AugmentedRow augEvent = new AugmentedRow();
             augEvent.setTableName(tableName);
@@ -496,8 +496,8 @@ public class EventAugmenter {
         for (Pair<Row> rowPair : upEvent.getRows()) {
 
             // caller incRowsProcessedCounter();
-            replicatorMetrics.incRowsUpdatedCounter();
-            replicatorMetrics.incRowsProcessedCounter();
+            replicatorMetrics.incRowsUpdatedCounter(tableName);
+            replicatorMetrics.incRowsProcessedCounter(tableName);
 
             AugmentedRow augEvent = new AugmentedRow();
             augEvent.setTableName(tableName);

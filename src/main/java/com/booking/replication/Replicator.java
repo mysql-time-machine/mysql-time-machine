@@ -45,13 +45,15 @@ public class Replicator {
     //private final  ConcurrentHashMap<Integer, HashMap<Integer, MutableLong>> pipelineStats =
     //        new  ConcurrentHashMap<Integer, HashMap<Integer, MutableLong>>();
 
-    private final ReplicatorMetrics replicatorMetrics = new ReplicatorMetrics();
+    private final ReplicatorMetrics replicatorMetrics;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(Replicator.class);
 
     // Replicator()
     public Replicator(Configuration conf) throws SQLException, URISyntaxException, IOException {
         configuration  = conf;
+
+        replicatorMetrics = new ReplicatorMetrics(configuration);
 
         BinlogPositionInfo lastKnownPosition = new BinlogPositionInfo(
             conf.getStartingBinlogFileName(),
@@ -60,7 +62,7 @@ public class Replicator {
         lastKnownInfo.put(Constants.LAST_KNOWN_BINLOG_POSITION, lastKnownPosition);
 
         binlogEventProducer = new BinlogEventProducer(binlogEventQueue, lastKnownInfo, configuration);
-        pipelineOrchestrator = new PipelineOrchestrator( binlogEventQueue, lastKnownInfo, configuration, replicatorMetrics);
+        pipelineOrchestrator = new PipelineOrchestrator(binlogEventQueue, lastKnownInfo, configuration, replicatorMetrics);
 
         overseer = new Overseer(binlogEventProducer, pipelineOrchestrator, replicatorMetrics ,lastKnownInfo);
     }

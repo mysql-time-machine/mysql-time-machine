@@ -3,6 +3,7 @@ package com.booking.replication.pipeline;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.sql.SQLException;
+import java.util.HashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -13,10 +14,12 @@ import com.booking.replication.Configuration;
 import com.booking.replication.Constants;
 import com.booking.replication.applier.Applier;
 import com.booking.replication.applier.STDOUTJSONApplier;
+import com.booking.replication.audit.CheckPointTests;
 import com.booking.replication.augmenter.AugmentedRowsEvent;
 import com.booking.replication.augmenter.AugmentedSchemaChangeEvent;
 import com.booking.replication.augmenter.EventAugmenter;
 import com.booking.replication.metrics.ReplicatorMetrics;
+import com.booking.replication.schema.TableNameMapper;
 import com.booking.replication.schema.HBaseSchemaManager;
 import com.booking.replication.schema.exception.TableMapException;
 import com.booking.replication.applier.HBaseApplier;
@@ -42,7 +45,7 @@ public class PipelineOrchestrator extends Thread {
 
     private final LinkedBlockingQueue<BinlogEventV4> queue;
 
-    private final ConcurrentHashMap<Integer,Object> lastKnownInfo;
+    private final ConcurrentHashMap<Integer,Object> binlogPositionLastKnownInfo;
 
     // private final ConcurrentHashMap<Integer, HashMap<Integer, MutableLong>> pipelineStats;
 
@@ -59,7 +62,15 @@ public class PipelineOrchestrator extends Thread {
     public final Configuration configuration;
     private final Applier applier;
 
+    private final CheckPointTests checkPointTests;
+
     private final long timeStarted;
+
+    private static final int BUFFER_FLUSH_INTERVAL = 30000; // <- force buffer flush every 30 sec
+
+    private static final int DEFAULT_VERSIONS_FOR_MIRRORED_TABLES = 1000;
+
+    private HashMap<String,Boolean> rotateEventAllreadySeenForBinlogFile = new HashMap<String, Boolean>();
 
     public long consumerStatsNumberOfProcessedRows = 0;
     public long consumerStatsNumberOfProcessedEvents = 0;
@@ -123,26 +134,29 @@ public class PipelineOrchestrator extends Thread {
         queue = q;
 
         if (repcfg.getApplierType().equals("STDOUT")) {
-            applier = new STDOUTJSONApplier();
+            applier = new STDOUTJSONApplier(replicatorMetrics, configuration);
         }
         else if (repcfg.getApplierType().toLowerCase().equals("hbase")) {
-            applier = new HBaseApplier(repcfg.getZOOKEEPER_QUORUM(), replicatorMetrics);
+            applier = new HBaseApplier(repcfg.getZOOKEEPER_QUORUM(), replicatorMetrics, configuration);
         }
         else {
             LOGGER.warn("Unknown applier type. Defaulting to STDOUT");
-            applier = new STDOUTJSONApplier();
+            applier = new STDOUTJSONApplier(replicatorMetrics, configuration);
         }
 
-        lastKnownInfo = chm;
+        binlogPositionLastKnownInfo = chm;
 
-        LOGGER.info("Created consumer with lastKnownInfo position => { "
+        LOGGER.info("Created consumer with binlogPositionLastKnownInfo position => { "
                 + " binlogFileName => "
-                +   ((BinlogPositionInfo) lastKnownInfo.get(Constants.LAST_KNOWN_BINLOG_POSITION)).getBinlogFilename()
+                +   ((BinlogPositionInfo) binlogPositionLastKnownInfo.get(Constants.LAST_KNOWN_BINLOG_POSITION)).getBinlogFilename()
                 + ", binlogPosition => "
-                +   ((BinlogPositionInfo) lastKnownInfo.get(Constants.LAST_KNOWN_BINLOG_POSITION)).getBinlogPosition()
+                +   ((BinlogPositionInfo) binlogPositionLastKnownInfo.get(Constants.LAST_KNOWN_BINLOG_POSITION)).getBinlogPosition()
                 + " }"
         );
-        timeStarted = System.currentTimeMillis();;
+
+        timeStarted = System.currentTimeMillis();
+
+        checkPointTests = new CheckPointTests(this.configuration, this.replicatorMetrics);
     }
 
     public boolean isRunning() {
@@ -162,6 +176,8 @@ public class PipelineOrchestrator extends Thread {
 
         setRunning(true);
 
+        long timeOfLastEvent = System.currentTimeMillis();
+
         while (isRunning()) {
             try {
                 if (queue.size() > 0) {
@@ -170,7 +186,11 @@ public class PipelineOrchestrator extends Thread {
                             queue.poll(100, TimeUnit.MILLISECONDS);
 
                     if (event != null) {
+
+                        timeOfLastEvent = System.currentTimeMillis();
+
                         eventCounter++;
+
                         replicatorMetrics.incEventsReceivedCounter();
                         if (!skipEvent(event)) {
                             calculateAndPropagateChanges(event);
@@ -190,6 +210,12 @@ public class PipelineOrchestrator extends Thread {
                 else {
                     LOGGER.info("Pipeline report: no items in producer event queue. Will sleep for 0.5s and check again.");
                     Thread.sleep(500);
+                    long currentTime = System.currentTimeMillis();
+                    long tDiff = currentTime - timeOfLastEvent;
+                    boolean forceFlush = (tDiff > BUFFER_FLUSH_INTERVAL);
+                    if (forceFlush) {
+                        applier.forceFlush();
+                    }
                 }
             } catch (InterruptedException e) {
                 LOGGER.error("InterruptedException, requesting replicator shutdown...", e);
@@ -300,7 +326,20 @@ public class PipelineOrchestrator extends Thread {
                             // This should not happen in tableMapEvent, unless we are
                             // replaying the binlog.
                             // TODO: load hbase tables on start-up so this never happens
-                            hBaseSchemaManager.createHBaseTableIfNotExists(hbaseTableName);
+                            hBaseSchemaManager.createHBaseTableIfNotExists(hbaseTableName, DEFAULT_VERSIONS_FOR_MIRRORED_TABLES);
+                        }
+                        if(configuration.isWriteRecentChangesToDeltaTables()) {
+                            String replicantSchema = ((TableMapEvent) event).getDatabaseName().toString();
+                            String mysqlTableName = ((TableMapEvent) event).getTableName().toString();
+                            long eventTimestampMicroSec = event.getHeader().getTimestamp();
+                            String deltaTableName = TableNameMapper.getCurrentDeltaTableName(
+                                    eventTimestampMicroSec,
+                                    replicantSchema,
+                                    mysqlTableName,
+                                    configuration.isInitialSnapshotMode());
+                            if (!hBaseSchemaManager.isTableKnownToHBase(deltaTableName)) {
+                                hBaseSchemaManager.createHBaseTableIfNotExists(deltaTableName, 1);
+                            }
                         }
                     }
                     updateLastKnownPositionForMapEvent((TableMapEvent) event);
@@ -366,13 +405,29 @@ public class PipelineOrchestrator extends Thread {
                 currentTransactionMetadata = new CurrentTransactionMetadata();
                 break;
 
-            // reset the fakeMicrosecondCounter at the beggining of the new binlog file
+            // reset the fakeMicrosecondCounter at the beginning of the new binlog file
             case MySQLConstants.FORMAT_DESCRIPTION_EVENT:
                 fakeMicrosecondCounter = 0;
+                applier.applyFormatDescriptionEvent((FormatDescriptionEvent) event);
+                break;
+
+            // flush buffer at the end of binlog file
+            case MySQLConstants.ROTATE_EVENT:
+                applier.applyRotateEvent((RotateEvent) event);
+                LOGGER.info("End of binlog file. Waiting for all tasks to finish before moving forward...");
+                applier.waitUntilAllRowsAreCommitted(checkPointTests);
+                LOGGER.info("All rows commited");
+                String currentBinlogFileName =
+                        ((BinlogPositionInfo) binlogPositionLastKnownInfo.get(Constants.LAST_KNOWN_MAP_EVENT_POSITION)).getBinlogFilename();
+                if (currentBinlogFileName.equals(configuration.getLastBinlogFileName())){
+                    LOGGER.info("Processed the last binlog file " + configuration.getLastBinlogFileName());
+                    setRunning(false);
+                    requestReplicatorShutdown();
+                }
+                break;
 
             // Events that we expect to appear in the binlog, but we don't do
             // any extra processing.
-            case MySQLConstants.ROTATE_EVENT:
             case MySQLConstants.STOP_EVENT:
                 break;
 
@@ -590,8 +645,26 @@ public class PipelineOrchestrator extends Thread {
                 }
                 break;
 
-            case MySQLConstants.FORMAT_DESCRIPTION_EVENT:
             case MySQLConstants.ROTATE_EVENT:
+                // This is a  workaround for a bug in open replicator
+                // which results in rotate event being created twice per
+                // binlog file - once at the end of the binlog file (as it should be)
+                // and once at the beginning of the next binlog file (which is a bug)
+                String currentBinlogFile =
+                        ((BinlogPositionInfo) binlogPositionLastKnownInfo.get(Constants.LAST_KNOWN_MAP_EVENT_POSITION)).getBinlogFilename();
+                if (rotateEventAllreadySeenForBinlogFile.containsKey(currentBinlogFile)) {
+                    eventIsTracked = false;
+                }
+                else {
+                    eventIsTracked = true;
+                    rotateEventAllreadySeenForBinlogFile.put(currentBinlogFile, true);
+                }
+                break;
+
+            case MySQLConstants.FORMAT_DESCRIPTION_EVENT:
+                eventIsTracked = true;
+                break;
+
             case MySQLConstants.STOP_EVENT:
                 eventIsTracked = true;
                 break;
@@ -653,8 +726,8 @@ public class PipelineOrchestrator extends Thread {
     private void updateLastKnownPositionForMapEvent(TableMapEvent event) {
 
         String lastBinlogFileName;
-        if (lastKnownInfo.get(Constants.LAST_KNOWN_MAP_EVENT_POSITION) != null) {
-            lastBinlogFileName = ((BinlogPositionInfo) lastKnownInfo.get(Constants.LAST_KNOWN_MAP_EVENT_POSITION)).getBinlogFilename();
+        if (binlogPositionLastKnownInfo.get(Constants.LAST_KNOWN_MAP_EVENT_POSITION) != null) {
+            lastBinlogFileName = ((BinlogPositionInfo) binlogPositionLastKnownInfo.get(Constants.LAST_KNOWN_MAP_EVENT_POSITION)).getBinlogFilename();
         }
         else {
             lastBinlogFileName = "";
@@ -664,7 +737,7 @@ public class PipelineOrchestrator extends Thread {
             LOGGER.info("moving to next binlog file [ " + lastBinlogFileName + " ] ==>> [ " + event.getBinlogFilename() + " ]");
         }
 
-        lastKnownInfo.put(
+        binlogPositionLastKnownInfo.put(
                 Constants.LAST_KNOWN_MAP_EVENT_POSITION,
                 new BinlogPositionInfo(
                         event.getBinlogFilename(),
@@ -673,9 +746,9 @@ public class PipelineOrchestrator extends Thread {
         );
 
         LOGGER.debug("Updated last known map event position to => ["
-                + ((BinlogPositionInfo) lastKnownInfo.get(Constants.LAST_KNOWN_MAP_EVENT_POSITION)).getBinlogFilename()
+                + ((BinlogPositionInfo) binlogPositionLastKnownInfo.get(Constants.LAST_KNOWN_MAP_EVENT_POSITION)).getBinlogFilename()
                 + ":"
-                + ((BinlogPositionInfo) lastKnownInfo.get(Constants.LAST_KNOWN_MAP_EVENT_POSITION)).getBinlogPosition()
+                + ((BinlogPositionInfo) binlogPositionLastKnownInfo.get(Constants.LAST_KNOWN_MAP_EVENT_POSITION)).getBinlogPosition()
                 + "]"
         );
     }
@@ -685,6 +758,6 @@ public class PipelineOrchestrator extends Thread {
                 event.getBinlogFilename(),
                 event.getHeader().getPosition()
         );
-        lastKnownInfo.put(Constants.LAST_KNOWN_BINLOG_POSITION, lastKnownPosition);
+        binlogPositionLastKnownInfo.put(Constants.LAST_KNOWN_BINLOG_POSITION, lastKnownPosition);
     }
 }

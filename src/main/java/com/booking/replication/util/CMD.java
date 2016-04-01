@@ -16,6 +16,7 @@ public class CMD {
         parser.accepts("schema").withRequiredArg().ofType(String.class);
         parser.accepts("applier").withRequiredArg().ofType(String.class);
         parser.accepts("binlog-filename").withRequiredArg().ofType(String.class);
+        parser.accepts("last-binlog-filename").withRequiredArg().ofType(String.class);
         parser.accepts("position").withRequiredArg().ofType(Long.class);
         parser.accepts("config-path").withRequiredArg().ofType(String.class);
         parser.accepts("shard").withRequiredArg().ofType(Integer.class);

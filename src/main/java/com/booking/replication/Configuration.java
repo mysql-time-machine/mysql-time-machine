@@ -36,8 +36,10 @@ public class Configuration {
     private boolean initialSnapshotMode;
     private long    startingBinlogPosition;
     private String  startingBinlogFileName;
+    private String  endingBinlogFileName;
     private String  replicantDBActiveHost; // <- by default first slave in the list
     private Map<String,List<String>> replicantDBSlavesByDC;
+    private List<String> tablesForWhichToTrackDailyChanges;
 
     private String ZOOKEEPER_QUORUM;
 
@@ -64,44 +66,49 @@ public class Configuration {
             dc_list.add(x);
         }
 
+        Joiner joiner = Joiner.on(", ");
+
         String str = new StringBuilder()
                 .append("\n")
-                .append("\tapplierType           : ")
+                .append("\tapplierType                       : ")
                 .append(applierType)
-                .append(",\n")
-                .append("\tdeltaTables           : ")
+                .append("\n")
+                .append("\tdeltaTables                       : ")
                 .append(writeRecentChangesToDeltaTables)
-                .append(",\n")
-                .append("\treplicantDC           : ")
+                .append("\n")
+                .append("\treplicantDC                       : ")
                 .append(replicantDC)
-                .append(",\n")
-                .append("\treplicantSchemaName   : ")
+                .append("\n")
+                .append("\treplicantSchemaName               : ")
                 .append(replicantSchemaName)
-                .append(",\n")
-                .append("\tuser name             : ")
+                .append("\n")
+                .append("\tuser name                         : ")
                 .append(replicantDBUserName)
-                .append(",\n")
-                .append("\treplicantDBSlavesByDC : ")
+                .append("\n")
+                .append("\treplicantDBSlavesByDC             : ")
                 .append(Joiner.on(" | ").join(dc_list))
-                .append(",\n")
-                .append("\treplicantDBActiveHost : ")
+                .append("\n")
+                .append("\treplicantDBActiveHost             : ")
                 .append(replicantDBActiveHost)
-                .append(",\n")
-                .append("\tactiveSchemaUserName  : ")
+                .append("\n")
+                .append("\tactiveSchemaUserName              : ")
                 .append(activeSchemaUserName)
-                .append(",\n")
-                .append("\tactiveSchemaHost      : ")
+                .append("\n")
+                .append("\tactiveSchemaHost                  : ")
                 .append(activeSchemaHost)
-                .append(",\n")
-                .append("\tgraphiteStatsNamesapce: ")
+                .append("\n")
+                .append("\tgraphiteStatsNamesapce            : ")
                 .append(graphiteStatsNamesapce)
-                .append(",\n")
-                .append("\tdeltaTables           : ")
+                .append("\n")
+                .append("\tdeltaTables                       : ")
                 .append(writeRecentChangesToDeltaTables)
-                .append(",\n")
-                .append("\tinitialSnapshotMode   : ")
+                .append("\n")
+                .append("\tinitialSnapshotMode               : ")
                 .append(initialSnapshotMode)
-                .append(",\n")
+                .append("\n")
+                .append("\ttablesForWhichToTrackDailyChanges : ")
+                .append(joiner.join(tablesForWhichToTrackDailyChanges))
+                .append("\n")
                 .toString();
 
         return str;
@@ -135,6 +142,10 @@ public class Configuration {
         return startingBinlogFileName;
     }
 
+    public String getLastBinlogFileName() {
+        return endingBinlogFileName;
+    }
+
     public void setReplicantDBActiveHost(String replicantDBActiveHost) {
         this.replicantDBActiveHost = replicantDBActiveHost;
     }
@@ -157,6 +168,10 @@ public class Configuration {
 
     public void setStartingBinlogFileName(String startingBinlogFileName) {
         this.startingBinlogFileName = startingBinlogFileName;
+    }
+
+    public void setLastBinlogFileName(String endingBinlogFileName) {
+        this.endingBinlogFileName = endingBinlogFileName;
     }
 
     public void setStartingBinlogPosition(long startingBinlogPosition) {
@@ -273,6 +288,14 @@ public class Configuration {
 
     public void setWriteRecentChangesToDeltaTables(boolean writeRecentChangesToDeltaTables) {
         this.writeRecentChangesToDeltaTables = writeRecentChangesToDeltaTables;
+    }
+
+    public List<String> getTablesForWhichToTrackDailyChanges() {
+        return tablesForWhichToTrackDailyChanges;
+    }
+
+    public void setTablesForWhichToTrackDailyChanges(List<String> tablesForWhichToTrackDailyChanges) {
+        this.tablesForWhichToTrackDailyChanges = tablesForWhichToTrackDailyChanges;
     }
 
     public boolean isInitialSnapshotMode() {

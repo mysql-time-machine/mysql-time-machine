@@ -114,6 +114,50 @@ public class Overseer extends Thread {
         int currentTimeSeconds = (int) (System.currentTimeMillis() / 1000L);
 
         List<String> metrics = new ArrayList<String>();
+
+        String graphiteStatsNamespace = pipelineOrchestrator.configuration.getGraphiteStatsNamesapce();
+
+        String dbAlias;
+
+        if (pipelineOrchestrator.configuration.getReplicantShardID() > 0) {
+            dbAlias = pipelineOrchestrator.configuration.getReplicantSchemaName()
+                    + String.valueOf(pipelineOrchestrator.configuration.getReplicantShardID());
+        }
+        else {
+            dbAlias = pipelineOrchestrator.configuration.getReplicantSchemaName();
+        }
+
+        // metrics per table (only for delta tables)
+        if (pipelineOrchestrator.configuration.isWriteRecentChangesToDeltaTables()) {
+            if (!graphiteStatsNamespace.equals("no-stats")) {
+                List<String> deltaTables = pipelineOrchestrator.configuration.getTablesForWhichToTrackDailyChanges();
+                HashMap<Integer, MutableLong> tableTotals;
+                for (String table : deltaTables) {
+                    if (replicatorMetrics.getTotalsPerTable().containsKey(table)) {
+                        tableTotals = replicatorMetrics.getTotalsPerTable().get(table);
+                        if (tableTotals != null) {
+                            for (Integer metricID : tableTotals.keySet()) {
+                                Long value = tableTotals.get(metricID).getValue();
+                                String graphitePoint = graphiteStatsNamespace
+                                        + "."
+                                        + dbAlias
+                                        + "."
+                                        + table
+                                        + "."
+                                        + Metric.getCounterName(metricID)
+                                        + " " + value.toString()
+                                        + " " + currentTimeSeconds;
+
+                                metrics.add(graphitePoint);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+
+        // time bucket metric
         for (Integer timebucket : replicatorMetrics.getMetrics().keySet()) {
 
             if (timebucket <  currentTimeSeconds) {
@@ -134,35 +178,19 @@ public class Overseer extends Thread {
 
                     Long value = timebucketStats.get(metricsID).getValue();
 
-                    String graphiteStatsNamespace = pipelineOrchestrator.configuration.getGraphiteStatsNamesapce();
-
-                    String metricsName;
-
                     if (!graphiteStatsNamespace.equals("no-stats")) {
                         String graphitePoint;
-                        if (pipelineOrchestrator.configuration.getReplicantShardID() > 0) {
-                            graphitePoint = graphiteStatsNamespace
-                                    + "."
-                                    + pipelineOrchestrator.configuration.getReplicantSchemaName()
-                                    + String.valueOf(pipelineOrchestrator.configuration.getReplicantShardID())
-                                    + "."
-                                    + Metric.getCounterName(metricsID)
-                                    + " " + value.toString()
-                                    + " " + timebucket.toString();
 
-                            LOGGER.debug("graphite point => " + graphitePoint);
-                        }
-                        else {
-                            graphitePoint = graphiteStatsNamespace
-                                    + "."
-                                    + pipelineOrchestrator.configuration.getReplicantSchemaName()
-                                    + "."
-                                    + Metric.getCounterName(metricsID)
-                                    + " " + value.toString()
-                                    + " " + timebucket.toString();
+                        graphitePoint = graphiteStatsNamespace
+                                + "."
+                                + dbAlias
+                                + "."
+                                + Metric.getCounterName(metricsID)
+                                + " " + value.toString()
+                                + " " + timebucket.toString();
 
-                            LOGGER.debug("graphite point => " + graphitePoint);
-                        }
+                        LOGGER.debug("graphite point => " + graphitePoint);
+
                         metrics.add(graphitePoint);
                     }
                 }

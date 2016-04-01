@@ -42,7 +42,7 @@ public class HBaseSchemaManager {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(HBaseSchemaManager.class);
 
-    public void createHBaseTableIfNotExists(String hbaseTableName)  {
+    public void createHBaseTableIfNotExists(String hbaseTableName, Integer versions)  {
 
         try {
 
@@ -59,7 +59,7 @@ public class HBaseSchemaManager {
 
                 HTableDescriptor tableDescriptor = new HTableDescriptor(TableName.valueOf(hbaseTableName));
                 HColumnDescriptor cd = new HColumnDescriptor("d");
-                cd.setMaxVersions(1000);
+                cd.setMaxVersions(versions);
                 tableDescriptor.addFamily(cd);
 
                 admin.createTable(tableDescriptor);

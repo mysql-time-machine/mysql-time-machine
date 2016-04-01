@@ -1,19 +1,33 @@
 Revision history for MySQL-Time-Machine
 
+Release 0.9.8  Date/Time: 2016-04-01
+
+        [ENHANCEMENTS]
+        - Added daily changes tables in HBase. Usefull for imports to hive
+        - Added table level counters
+        - Added check point tests on binlog rotate event
+        - Added "Chaos Monkey" which fails HBase Applier tasks in 1% of the cases
+
+        [MINOR ENHANCEMENTS]
+        - Added option for end-binlog-file
+
+        [BUG FIXES]
+        - Handle OpenReplicator bug that produces two rotate events per one binlog file
+
 Release 0.9.7  Date/Time: 2016-02-26
 
         [ENHANCEMENTS]
         - Added hbase-applier-tasks metrics
-		- Added counter-totals metrics
-		- Added initial-snapshot option
+        - Added counter-totals metrics
+        - Added initial-snapshot option
 
         [MINOR ENHANCEMENTS]
         - Refactored hbase applier to prepare structure for future features
-		- More debug info added to STDOUT applier
-		- Better naming of metrics
+        - More debug info added to STDOUT applier
+        - Better naming of metrics
 
         [BUG FIXES]
-		- fix for missing rows of the last task of initial snapshot in
+        - fix for missing rows of the last task of initial snapshot in
           the case when COMMIT query event does not contain database name.
         - fix for NullPointer exception in ReplicatorMetrics.
 

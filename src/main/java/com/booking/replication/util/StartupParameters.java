@@ -16,6 +16,7 @@ public class StartupParameters {
     private String  applier;
     private String  binlogFileName;
     private Long    binlogPosition;
+    private String  lastBinlogFileName;
     private Integer shard;
     private boolean deltaTables;
     private boolean initialSnapshot;
@@ -98,15 +99,20 @@ public class StartupParameters {
             binlogPosition = 4L;
         }
 
+        if (o.hasArgument("last-binlog-filename")) {
+            lastBinlogFileName = o.valueOf("last-binlog-filename").toString();
+        }
+
         System.out.println("----------------------------------------------");
-        System.out.println("Parsed params:     ");
-        System.out.println("\tconfig-path:     " + configPath);
-        System.out.println("\tdc:              " + dc);
-        System.out.println("\tschema:          " + schema);
-        System.out.println("\tapplier:         " + applier);
-        System.out.println("\tbinlog-filename: " + binlogFileName);
-        System.out.println("\tposition:        " + binlogPosition);
-        System.out.println("\tinitial-snapshot:" + initialSnapshot);
+        System.out.println("Parsed params:          ");
+        System.out.println("\tconfig-path:          " + configPath);
+        System.out.println("\tdc:                   " + dc);
+        System.out.println("\tschema:               " + schema);
+        System.out.println("\tapplier:              " + applier);
+        System.out.println("\tbinlog-filename:      " + binlogFileName);
+        System.out.println("\tposition:             " + binlogPosition);
+        System.out.println("\tlast-binlog-filename: " + lastBinlogFileName);
+        System.out.println("\tinitial-snapshot:     " + initialSnapshot);
         System.out.println("----------------------------------------------\n");
 
     }
@@ -137,6 +143,10 @@ public class StartupParameters {
 
     public String getBinlogFileName() {
         return binlogFileName;
+    }
+
+    public String getLastBinlogFileName() {
+        return lastBinlogFileName;
     }
 
     public void setBinlogFileName(String binlogFileName) {

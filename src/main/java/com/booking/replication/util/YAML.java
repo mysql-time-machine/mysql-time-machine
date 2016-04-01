@@ -17,10 +17,10 @@ import java.util.Map;
  *
  * This is the structure of the config file:
  *
- *     schema_history:
+ *     schema_tracker:
  *         username: '<username>'
  *         password: '<password>'
- *         host:
+ *         hosts:
  *             dc1: 'host-1'
  *             dc2: 'host-2'
  *     replicated_schema_name:
@@ -39,33 +39,31 @@ public class YAML {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(YAML.class);
 
-    private static final String SCHEMA_TRACKER = "schema_history";
+    private static final String SCHEMA_TRACKER  = "schema_history";
+    private static final String HIVE_IMPORT_KEY = "hive_imports";
 
     public static Configuration loadReplicatorConfiguration(StartupParameters startupParameters){
 
-        String  dc              = startupParameters.getDc();
-        String  schema          = startupParameters.getSchema();
-        String  applier         = startupParameters.getApplier();
-        String  binlogFilename  = startupParameters.getBinlogFileName();
-        Long    binlogPosition  = startupParameters.getBinlogPosition();
-        String  configPath      = startupParameters.getConfigPath();
-        Integer shard           = startupParameters.getShard();
-        Boolean useDeltaTables  = startupParameters.isDeltaTables();
-        Boolean initialSnapshot = startupParameters.isInitialSnapshot();
+        String  dc                     = startupParameters.getDc();
+        String  schema                 = startupParameters.getSchema();
+        String  applier                = startupParameters.getApplier();
+        String  startingBinlogFilename = startupParameters.getBinlogFileName();
+        Long    binlogPosition         = startupParameters.getBinlogPosition();
+        String  lastBinlogFilename     = startupParameters.getLastBinlogFileName();
+        String  configPath             = startupParameters.getConfigPath();
+        Integer shard                  = startupParameters.getShard();
+        Boolean useDeltaTables         = startupParameters.isDeltaTables();
+        Boolean initialSnapshot        = startupParameters.isInitialSnapshot();
 
         Configuration rc = new Configuration();
 
         // staring position
-        rc.setStartingBinlogFileName(binlogFilename);
+        rc.setStartingBinlogFileName(startingBinlogFilename);
         rc.setStartingBinlogPosition(binlogPosition);
+        rc.setLastBinlogFileName(lastBinlogFilename);
 
         // dc
         rc.setReplicantDC(dc);
-
-        if (useDeltaTables == true && initialSnapshot == true) {
-            LOGGER.error("delta tables and initial snapshots are mutually exclusive!");
-            System.exit(1);
-        }
 
         // delta tables
         rc.setWriteRecentChangesToDeltaTables(useDeltaTables);
@@ -128,6 +126,14 @@ public class YAML {
                     Map<String, Object> value = config.get(shardConfigKey);
                     String graphiteStatsNamespace = (String) value.get("namespace");
                     rc.setGraphiteStatsNamesapce(graphiteStatsNamespace);
+                }
+
+                if (shardConfigKey.equals(HIVE_IMPORT_KEY)) {
+                    Map<String, Object> value = config.get(shardConfigKey);
+                    if (value.containsKey(shardName)) {
+                        List<String> tableList = (List<String>) value.get(shardName);
+                        rc.setTablesForWhichToTrackDailyChanges(tableList);
+                    }
                 }
             }
         } catch (Exception e){

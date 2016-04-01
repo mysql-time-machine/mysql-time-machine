@@ -1,6 +1,7 @@
 package com.booking.replication.applier;
 
 import com.booking.replication.metrics.ReplicatorMetrics;
+import com.booking.replication.util.MutableLong;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.*;
@@ -60,9 +61,10 @@ public class HBaseApplierTaskManager {
      * different transactions does not influence the end result since data will be timestamped with timestamps
      * from the binlog and if there are multiple operations on the same row all versions are kept in HBase.
      */
+
     private final
-            ConcurrentHashMap<String, Map<String, Map<String,List<Mutation>>>>
-            taskMutationBuffer = new ConcurrentHashMap<String, Map<String, Map<String,List<Mutation>>>>();
+            ConcurrentHashMap<String, Map<String, Map<String,List<Put>>>>
+            taskMutationBuffer = new ConcurrentHashMap<String, Map<String, Map<String,List<Put>>>>();
 
     private final
     ConcurrentHashMap<String, Map<String, Map<String,List<String>>>>
@@ -72,14 +74,16 @@ public class HBaseApplierTaskManager {
      * Futures grouped by task UUID
      */
     private final
-            ConcurrentHashMap<String, Future<Void>>
-            taskFutures = new ConcurrentHashMap<String,Future<Void>>();
+            ConcurrentHashMap<String, Future<TaskResult>>
+            taskFutures = new ConcurrentHashMap<String,Future<TaskResult>>();
 
     /**
      * Status tracking helper structures
      */
     private final ConcurrentHashMap<String, Integer> taskStatus        = new ConcurrentHashMap<String,Integer>();
     private final ConcurrentHashMap<String, Integer> transactionStatus = new ConcurrentHashMap<String,Integer>();
+
+    private final ConcurrentHashMap<String, List<String>> taskMessages = new ConcurrentHashMap<>();
 
     /**
      * Shared connection used by all tasks in applier
@@ -91,12 +95,18 @@ public class HBaseApplierTaskManager {
      */
     private static ExecutorService taskPool;
 
+    // TODO: add to startup options
     private final int POOL_SIZE;
+
+    // dry run option; TODO: add to startup options
+    private final boolean DRY_RUN = false;
 
     private static volatile String currentTaskUUID;
     private static volatile String currentTransactionUUID;
 
-    public AtomicInteger rowsBufferedCounter = new AtomicInteger(0);
+    // rowsBufferedInCurrentTask is the size of currentTaskUUID buffer. Once this buffer
+    // is full, it is submitted and new one is opened with new taskUUID
+    public AtomicInteger rowsBufferedInCurrentTask = new AtomicInteger(0);
 
     private final ReplicatorMetrics replicatorMetrics;
 
@@ -121,18 +131,23 @@ public class HBaseApplierTaskManager {
             LOGGER.error("Failed to create hbase connection", e);
         }
 
+        initBuffers();
+
+    }
+
+    public void initBuffers() {
+
         currentTaskUUID = UUID.randomUUID().toString();
         currentTransactionUUID = UUID.randomUUID().toString();
 
-        taskMutationBuffer.put(currentTaskUUID, new HashMap<String, Map<String, List<Mutation>>>());
+        taskMutationBuffer.put(currentTaskUUID, new HashMap<String, Map<String, List<Put>>>());
         taskRowIDS.put(currentTaskUUID, new HashMap<String, Map<String, List<String>>>());
 
-        taskMutationBuffer.get(currentTaskUUID).put(currentTransactionUUID, new HashMap<String,List<Mutation>>());
+        taskMutationBuffer.get(currentTaskUUID).put(currentTransactionUUID, new HashMap<String,List<Put>>());
         taskRowIDS.get(currentTaskUUID).put(currentTransactionUUID, new HashMap<String,List<String>>());
 
         taskStatus.put(currentTaskUUID, TaskStatusCatalog.READY_FOR_BUFFERING);
         transactionStatus.put(currentTransactionUUID, TransactionStatus.OPEN);
-
     }
 
     // ================================================
@@ -160,11 +175,10 @@ public class HBaseApplierTaskManager {
             System.exit(1);
         }
 
+        // in case of delta tables, delta table key will belong to the same task and transaction
+        // as corresponding mirrored table
         if (taskMutationBuffer.get(currentTaskUUID).get(currentTransactionUUID).get(tableName) == null) {
-            taskMutationBuffer.get(currentTaskUUID).get(currentTransactionUUID).put(tableName, new ArrayList<Mutation>());
-            // LOGGER.info("New table in uuid buffer " + uuid + ", initialized key for table " + tableName );
-        }
-        if (taskRowIDS.get(currentTaskUUID).get(currentTransactionUUID).get(tableName) == null) {
+            taskMutationBuffer.get(currentTaskUUID).get(currentTransactionUUID).put(tableName, new ArrayList<Put>());
             taskRowIDS.get(currentTaskUUID).get(currentTransactionUUID).put(tableName, new ArrayList<String>());
             // LOGGER.info("New table in uuid buffer " + uuid + ", initialized key for table " + tableName );
         }
@@ -172,7 +186,7 @@ public class HBaseApplierTaskManager {
         taskMutationBuffer.get(currentTaskUUID).get(currentTransactionUUID).get(tableName).add(put);
         taskRowIDS.get(currentTaskUUID).get(currentTransactionUUID).get(tableName).add(hbRowKey);
 
-        rowsBufferedCounter.incrementAndGet();
+        rowsBufferedInCurrentTask.incrementAndGet();
     }
 
     // ================================================
@@ -185,30 +199,31 @@ public class HBaseApplierTaskManager {
 
         // open a new transaction slot and set it as the current transaction
         currentTransactionUUID = UUID.randomUUID().toString();
-        taskMutationBuffer.get(currentTaskUUID).put(currentTransactionUUID, new HashMap<String,List<Mutation>>());
+        taskMutationBuffer.get(currentTaskUUID).put(currentTransactionUUID, new HashMap<String,List<Put>>());
         taskRowIDS.get(currentTaskUUID).put(currentTransactionUUID, new HashMap<String,List<String>>());
         transactionStatus.put(currentTransactionUUID, TransactionStatus.OPEN);
     }
 
-    public void flushCurrentTaskBuffer() {
-
-        // mark current uuid buffer as READY_FOR_PICK_UP and create new uuid buffer
-        markCurrentTaskAsReadyAndCreateNewUUIDBuffer(); // <- this one is blocking
-        flushBufferedTask(); // <- current and those which previously failed
-    }
-
-    private void markCurrentTaskAsReadyAndCreateNewUUIDBuffer() {
+    public void markCurrentTaskAsReadyAndCreateNewUUIDBuffer() {
 
         // don't create new buffers if no slots available
         blockIfNoSlotsAvailableForBuffering();
 
-        // mark current uuid buffer as READY_FOR_PICK_UP
-        taskStatus.put(currentTaskUUID, TaskStatusCatalog.READY_FOR_PICK_UP);
+        // mark current uuid buffer as READY_FOR_PICK_UP unless there are no
+        // rows buffered (then just keep the buffer ready for next binlog file)
+        if (rowsBufferedInCurrentTask.get() > 0) {
+            taskStatus.put(currentTaskUUID, TaskStatusCatalog.READY_FOR_PICK_UP);
+        }
+        else {
+            return;
+        }
 
         // create new uuid buffer
         String newTaskUUID = UUID.randomUUID().toString();
 
-        taskMutationBuffer.put(newTaskUUID, new HashMap<String, Map<String, List<Mutation>>>());
+        taskMessages.put(newTaskUUID, new ArrayList<String>());
+
+        taskMutationBuffer.put(newTaskUUID, new HashMap<String, Map<String, List<Put>>>());
         taskRowIDS.put(newTaskUUID, new HashMap<String, Map<String, List<String>>>());
 
         // Check if there is an open/unfinished transaction in current UUID task buffer and
@@ -225,7 +240,7 @@ public class HBaseApplierTaskManager {
                     LOGGER.error("More than one partial transaction in the buffer. Should never happen! Exiting...");
                     System.exit(-1);
                 }
-                taskMutationBuffer.get(newTaskUUID).put(transactionUUID, new HashMap<String,List<Mutation>>() );
+                taskMutationBuffer.get(newTaskUUID).put(transactionUUID, new HashMap<String,List<Put>>() );
                 taskRowIDS.get(newTaskUUID).put(transactionUUID, new HashMap<String,List<String>>() );
                 currentTransactionUUID = transactionUUID; // <- important
             }
@@ -235,6 +250,8 @@ public class HBaseApplierTaskManager {
 
         currentTaskUUID = newTaskUUID;
 
+        rowsBufferedInCurrentTask.set(0);
+
         // update task queue size
         long taskQueueSize = 0;
         for (String taskUUID : taskStatus.keySet()) {
@@ -243,6 +260,60 @@ public class HBaseApplierTaskManager {
             }
         }
         replicatorMetrics.setTaskQueueSize(taskQueueSize);
+    }
+
+    public void markAllTasksAsReadyToGo() {
+
+        // mark current uuid buffer as READY_FOR_PICK_UP
+        int nubmerOfTasksLeft = taskStatus.keySet().size();
+
+        LOGGER.info("Tasks left: " + nubmerOfTasksLeft);
+
+        if (nubmerOfTasksLeft == 0) {
+            replicatorMetrics.setTaskQueueSize(0L);
+            return;
+        }
+        else {
+            for (String taskUUID : taskStatus.keySet()) {
+
+                if (taskStatus.get(taskUUID) == TaskStatusCatalog.WRITE_IN_PROGRESS) {
+                    LOGGER.info("task " + taskUUID + " => " + "WRITE_IN_PROGRESS");
+                }
+                else if (taskStatus.get(taskUUID) == TaskStatusCatalog.WRITE_FAILED) {
+                    LOGGER.info("task " + taskUUID + " => " + "WRITE_FAILED");
+                    //requeueTask(taskUUID); // todo: update task queue size
+                }
+                else if (taskStatus.get(taskUUID) == TaskStatusCatalog.TASK_SUBMITTED) {
+                    LOGGER.info("task " + taskUUID + " => " + "TASK_SUBMITTED");
+                }
+                else if (taskStatus.get(taskUUID) == TaskStatusCatalog.READY_FOR_PICK_UP) {
+                    LOGGER.info("task " + taskUUID + " => " + "READY_FOR_PICK_UP");
+                }
+                else if (taskStatus.get(taskUUID) == TaskStatusCatalog.READY_FOR_BUFFERING) {
+                    LOGGER.info("task " + taskUUID + " => " + "READY_FOR_BUFFERING");
+                    if (taskHasRowsBuffered(taskUUID)) {
+                        taskStatus.put(taskUUID, TaskStatusCatalog.READY_FOR_PICK_UP);
+                        LOGGER.info("Marked task " + taskUUID + " as READY_FOR_PICK_UP");
+                    }
+                    else {
+                        // cant flush empty task
+                        taskStatus.remove(taskUUID);
+                        taskMutationBuffer.remove(taskUUID);
+                        taskRowIDS.remove(taskUUID);
+                        taskMessages.remove(taskUUID);
+                        if (taskFutures.containsKey(taskUUID)) {
+                            taskFutures.remove(taskUUID);
+                        }
+                    }
+                }
+                else if (taskStatus.get(taskUUID) == TaskStatusCatalog.WRITE_SUCCEEDED) {
+                    LOGGER.info("task " + taskUUID + " => " + "WRITE_SUCCEEDED");
+                }
+                else {
+                    LOGGER.info("task " + taskUUID + " => " + "UNKNOWN STATUS => " + taskStatus.get(taskUUID));
+                }
+            }
+        }
     }
 
     private void blockIfNoSlotsAvailableForBuffering() {
@@ -258,13 +329,13 @@ public class HBaseApplierTaskManager {
 
             if (currentNumberOfTasks > POOL_SIZE) {
                 try {
-                    Thread.sleep(10);
-                    blockingTime += 10;
+                    Thread.sleep(5);
+                    blockingTime += 5;
                 }
                 catch (InterruptedException e) {
                     LOGGER.error("Cant sleep.", e);
                 }
-                if ((blockingTime % 1000) == 0) {
+                if ((blockingTime % 500) == 0) {
                     LOGGER.warn("To many tasks already open ( " + currentNumberOfTasks + " ), blocking time is " + blockingTime + "ms");
                 }
             }
@@ -274,49 +345,150 @@ public class HBaseApplierTaskManager {
         }
     }
 
-    private void updateTaskStatuses() {
+    public void updateTaskStatuses() {
 
         // clean up and re-queue failed tasks
         Set<String> taskFuturesUUIDs = taskFutures.keySet();
 
-        for (String submitedTaskUUID : taskFuturesUUIDs) {
+        // Loop submitted tasks
+        for (String submittedTaskUUID : taskFuturesUUIDs) {
 
-            Future<Void> taskFuture = taskFutures.get(submitedTaskUUID);
+            Future<TaskResult> taskFuture;
 
-            if (taskFuture.isDone()) {
+            try {
 
-                if (taskStatus.get(submitedTaskUUID) == TaskStatusCatalog.WRITE_SUCCEEDED) {
+                taskFuture = taskFutures.get(submittedTaskUUID);
 
-                    taskStatus.remove(submitedTaskUUID);
+                // Process done tasks
+                if (taskFuture.isDone()) {
 
-                    taskMutationBuffer.remove(submitedTaskUUID); // <- if there are open transaction UUID in this task, they have been copied to new task
-                    taskRowIDS.remove(submitedTaskUUID); // <== --||--
+                    LOGGER.info("Task " + submittedTaskUUID + " is done");
 
-                    // since the task is done, remove the key from the futures hash
-                    taskFutures.remove(submitedTaskUUID);
-                } else if (taskStatus.get(submitedTaskUUID) == TaskStatusCatalog.WRITE_FAILED) {
+                    TaskResult taskResult = taskFuture.get(); // raise exceptions if any
+                    boolean taskSucceeded = taskResult.isTaskSucceeded();
+                    long numberOfRowsInTask = taskResult.getNumberOfRowsInTask();
 
-                    LOGGER.warn("Task " + submitedTaskUUID +
-                            " failed with status => " + taskStatus.get(submitedTaskUUID) +
-                            ". Task will be retried."
-                    );
+                    int statusOfDoneTask = taskStatus.get(submittedTaskUUID);
 
-                    // remove the key from the futures hash; new future will be created
-                    taskFutures.remove(submitedTaskUUID);
+                    if (statusOfDoneTask == TaskStatusCatalog.WRITE_SUCCEEDED) {
+                        if (!taskSucceeded) {
+                            throw new Exception("Inconsistent success reports for task " + submittedTaskUUID);
+                        }
 
-                    // keep the mutation buffer, just change the status so this task is picked up again
-                    taskStatus.put(submitedTaskUUID, TaskStatusCatalog.READY_FOR_PICK_UP);
-                } else {
-                    LOGGER.error("Task status error for STATUS => " + taskStatus.get(submitedTaskUUID).toString());
+                        replicatorMetrics.incApplierTasksSucceededCounter();
+                        replicatorMetrics.addToRowOpsSuccessfullyCommited(numberOfRowsInTask);
+
+                        if (taskResult.getTableStats() != null) {
+                            for (String table : taskResult.getTableStats().keySet()) {
+                                long rowOpsCommitedForTable = taskResult.getTableStats().get(table).getValue();
+                                LOGGER.info("Row ops committed for table " + table + " => " + rowOpsCommitedForTable);
+                                replicatorMetrics.incTotalRowOpsSuccessfullyCommited(rowOpsCommitedForTable, table);
+                            }
+                        }
+                        else {
+                            LOGGER.error("No table stats in task result!");
+                        }
+
+                        taskStatus.remove(submittedTaskUUID);
+                        taskMessages.remove(submittedTaskUUID);
+
+                        // the following two are structured by task-transaction, so
+                        // if there is an open transaction UUID in this task, it has
+                        // already been copied to the new/next task
+                        taskMutationBuffer.remove(submittedTaskUUID);
+                        taskRowIDS.remove(submittedTaskUUID);
+
+                        // since the task is done, remove the key from the futures hash
+                        taskFutures.remove(submittedTaskUUID);
+
+
+                    } else if (statusOfDoneTask == TaskStatusCatalog.WRITE_FAILED) {
+                        if (taskSucceeded) {
+                            throw new Exception("Inconsistent success reports for task " + submittedTaskUUID);
+                        }
+                        LOGGER.warn("Task " + submittedTaskUUID + " failed. Task will be retried.");
+                        requeueTask(submittedTaskUUID);
+                        replicatorMetrics.incApplierTasksFailedCounter();
+                    }
+                    else {
+                        LOGGER.error("Illegal task status ["
+                                + statusOfDoneTask
+                                + "]. Probably a silent death of a thread. "
+                                + "Will consider the task as failed and re-queue.");
+                        requeueTask(submittedTaskUUID);
+                        replicatorMetrics.incApplierTasksFailedCounter();
+                    }
                 }
+            }
+            catch (ExecutionException ex) {
+                LOGGER.error("Future failed for task " + submittedTaskUUID + ", with exception " + ex.getCause().toString());
+                requeueTask(submittedTaskUUID);
+                replicatorMetrics.incApplierTasksFailedCounter();
+            } catch (InterruptedException ei) {
+                LOGGER.info("Task " + submittedTaskUUID + " was canceled by interrupt. The task that has been canceled will be retired later by another future.", ei);
+                requeueTask(submittedTaskUUID);
+                replicatorMetrics.incApplierTasksFailedCounter();
+            } catch (Exception e) {
+                LOGGER.error("Inconsistent success reports for task " + submittedTaskUUID + ". Will retry the task.");
+                requeueTask(submittedTaskUUID);
+                replicatorMetrics.incApplierTasksFailedCounter();
             }
         }
     }
 
     /**
+     * requeueTask
+     *
+     * @param failedTaskUUID
+     */
+    private void requeueTask(String failedTaskUUID) {
+
+        // remove the key from the futures hash; new future will be created
+        taskFutures.remove(failedTaskUUID);
+
+        // keep the mutation buffer, just change the status so this task is picked up again
+        taskStatus.put(failedTaskUUID, TaskStatusCatalog.READY_FOR_PICK_UP);
+    }
+
+    private boolean taskHasRowsBuffered(String taskUUID) {
+
+        boolean taskHasTransactions = false;
+        boolean taskHasRows = false;
+
+        Map<String, Map<String, List<Put>>> task = taskMutationBuffer.get(taskUUID);
+
+        Set<String> transactionIDs = task.keySet();
+        if (transactionIDs != null) {
+            taskHasTransactions = true;
+            for (String transactionUUID : transactionIDs) {
+                Set<String> transactionTables = task.get(transactionUUID).keySet();
+                if (transactionTables != null) {
+                    for (String tableName : transactionTables) {
+                        List<Put> bufferedOPS = task.get(transactionUUID).get(tableName);
+                        if (bufferedOPS != null && bufferedOPS.size() > 0) {
+                            taskHasRows = true;
+                        }
+                        else {
+                            LOGGER.info("Table " + tableName + " has no rows!!!");
+                        }
+                    }
+                }
+                else {
+                    LOGGER.warn("Transaction " + transactionUUID + " has no tables!!!");
+                }
+            }
+        }
+        else {
+            LOGGER.warn("No transactions on task " + taskUUID);
+        }
+
+        return taskHasRows;
+    }
+
+    /**
      * Submit tasks that are READY_FOR_PICK_UP
      */
-    private void flushBufferedTask() {
+    public void submitTasksThatAreReadyForPickUp() {
 
         if (hbaseConnection == null) {
             LOGGER.info("HBase connection is gone. Will try to recreate new connection...");
@@ -345,110 +517,161 @@ public class HBaseApplierTaskManager {
         // one future per task
         for (final String taskUUID : taskStatus.keySet()) {
 
-            if (taskStatus.get(taskUUID) == TaskStatusCatalog.READY_FOR_PICK_UP) {
+            boolean taskHasTransactions = false;
+            boolean taskHasRows = false;
 
-                taskStatus.put(taskUUID,TaskStatusCatalog.TASK_SUBMITTED);
-                replicatorMetrics.incApplierTasksSubmittedCounter();
+            Map<String, Map<String, List<Put>>> task = taskMutationBuffer.get(taskUUID);
 
-                taskFutures.put(taskUUID, taskPool.submit(new Callable<Void>() {
-
-                    @Override
-                    public Void call() throws Exception {
-
-                        try {
-
-                            int numberOfTransactionsInTask = taskMutationBuffer.get(taskUUID).keySet().size();
-                            long numberOfRowsInTask = 0;
-                            for (String transactionUUID : taskRowIDS.get(taskUUID).keySet()) {
-                                for (String tableName : taskRowIDS.get(taskUUID).get(transactionUUID).keySet()) {
-                                    List<String> bufferedIDs = taskRowIDS.get(taskUUID).get(transactionUUID).get(tableName);
-                                    int numberOfBufferedIDsForTable = bufferedIDs.size();
-                                    numberOfRowsInTask += numberOfBufferedIDsForTable;
+            if (task != null) {
+                Set<String> transactionIDs = task.keySet();
+                if (transactionIDs != null) {
+                    taskHasTransactions = true;
+                    for (String transactionUUID : transactionIDs) {
+                        Set<String> transactionTables = task.get(transactionUUID).keySet();
+                        if (transactionTables != null) {
+                            for (String tableName : transactionTables) {
+                                List<Put> bufferedOPS = task.get(transactionUUID).get(tableName);
+                                if (bufferedOPS != null && bufferedOPS.size() > 0) {
+                                    taskHasRows = true;
+                                }
+                                else {
+                                    LOGGER.info("Table " + tableName + " has no rows!!!");
                                 }
                             }
-
-                            taskStatus.put(taskUUID, TaskStatusCatalog.WRITE_IN_PROGRESS);
-                            replicatorMetrics.incApplierTasksInProgressCounter();
-
-                            for (final String transactionUUID : taskMutationBuffer.get(taskUUID).keySet()) {
-
-                                int numberOfTablesInCurrentTransaction = taskMutationBuffer.get(taskUUID).get(transactionUUID).keySet().size();
-
-                                int numberOfFlushedTablesInCurrentTransaction = 0;
-
-                                for (final String bufferedTableName : taskMutationBuffer.get(taskUUID).get(transactionUUID).keySet()) {
-
-                                    // One mutator and listener for each table in transaction (good for big transactions)
-                                    TableName TABLE = TableName.valueOf(bufferedTableName);
-
-                                    // create listener
-                                    BufferedMutator.ExceptionListener listener =
-                                            new BufferedMutator.ExceptionListener() {
-                                                @Override
-                                                public void onException(RetriesExhaustedWithDetailsException e, BufferedMutator mutator) {
-                                                    // This is callback is executed in mutator.flush()
-                                                    for (int i = 0; i < e.getNumExceptions(); i++) {
-                                                        LOGGER.error("Failed to send put to table " + bufferedTableName + e.getRow(i));
-                                                    }
-                                                    taskStatus.put(taskUUID, TaskStatusCatalog.WRITE_FAILED);
-                                                }
-                                            };
-
-                                    // attach listener
-                                    BufferedMutatorParams params = new BufferedMutatorParams(TABLE).listener(listener);
-
-                                    // get mutator
-                                    BufferedMutator mutator = hbaseConnection.getBufferedMutator(params);
-
-                                    mutator.mutate(taskMutationBuffer.get(taskUUID).get(transactionUUID).get(bufferedTableName)); // <<- List<Mutation> for the given table
-                                    mutator.flush(); // <- flush per table, but fork per batch (which can have many tables)
-                                    mutator.close();
-
-                                    numberOfFlushedTablesInCurrentTransaction++;
-
-                                } // next table
-
-                                // callback report
-                                if (taskStatus.get(taskUUID) == TaskStatusCatalog.WRITE_FAILED) {
-                                    throw new IOException(
-                                            "RetriesExhaustedWithDetailsException caught. Task " +
-                                            taskUUID + " failed."
-                                    );
-                                }
-
-                                if (numberOfTablesInCurrentTransaction != numberOfFlushedTablesInCurrentTransaction) {
-                                    throw new IOException("Failed to write all tables in the transaction "
-                                            + transactionUUID
-                                            + ". Number of present tables => "
-                                            + numberOfTablesInCurrentTransaction
-                                            + ". Number of flushed tables => "
-                                            + numberOfFlushedTablesInCurrentTransaction
-                                    );
-                                }
-                            } // next transaction
-
-                            taskStatus.put(taskUUID, TaskStatusCatalog.WRITE_SUCCEEDED);
-
-                            replicatorMetrics.incApplierTasksSucceededCounter();
-
-                            replicatorMetrics.deltaIncRowOpsSuccessfullyCommited(numberOfRowsInTask);
-
-                            //long totalRowsSoFar = replicatorMetrics.getTotalRowsSuccessfullyInserted();
-                            replicatorMetrics.incTotalRowOpsSuccessfullyCommited(numberOfRowsInTask);
-
-                        } catch (IOException e) {
-                            LOGGER.error(
-                                    "Failed to flush buffer for transaction " +
-                                    taskUUID +
-                                    ". Marking this task for retry...", e
-                            );
-                            // if one transaction fails, the whole task is retried.
-                            taskStatus.put(taskUUID, TaskStatusCatalog.WRITE_FAILED);
-                            replicatorMetrics.incApplierTasksFailedCounter();
                         }
-                        return null;
+                        else {
+                            LOGGER.warn("Transaction " + transactionUUID + " has no tables!!!");
+                        }
                     }
-                }));
+                }
+                else {
+                    LOGGER.warn("No transactions on task " + taskUUID);
+                }
+            }
+            else {
+                LOGGER.warn("task is null");
+            }
+
+            if ((taskStatus.get(taskUUID) == TaskStatusCatalog.READY_FOR_PICK_UP)) {
+                if (taskHasTransactions && taskHasRows) {
+
+                    LOGGER.info("Submitting task " + taskUUID);
+
+                    taskStatus.put(taskUUID, TaskStatusCatalog.TASK_SUBMITTED);
+
+                    replicatorMetrics.incApplierTasksSubmittedCounter();
+
+                    taskFutures.put(taskUUID, taskPool.submit(new Callable<TaskResult>() {
+
+                        @Override
+                        public TaskResult call() throws Exception {
+
+                            try {
+                                long numberOfRowsInTask = 0;
+
+                                HashMap<String, MutableLong> tableStats = new HashMap<String, MutableLong>();
+
+                                for (String transactionUUID : taskRowIDS.get(taskUUID).keySet()) {
+                                    for (String tableName : taskRowIDS.get(taskUUID).get(transactionUUID).keySet()) {
+                                        List<String> bufferedIDs = taskRowIDS.get(taskUUID).get(transactionUUID).get(tableName);
+                                        long numberOfBufferedIDsForTable = bufferedIDs.size();
+                                        numberOfRowsInTask += numberOfBufferedIDsForTable;
+                                        if (tableStats.get(tableName) == null) {
+                                            tableStats.put(tableName, new MutableLong(numberOfBufferedIDsForTable));
+                                        } else {
+                                            tableStats.get(tableName).addValue(numberOfBufferedIDsForTable);
+                                        }
+                                    }
+                                }
+
+                                LOGGER.info("Number of rows in task " + taskUUID + " => " + numberOfRowsInTask);
+
+                                if (DRY_RUN) {
+                                    taskStatus.put(taskUUID, TaskStatusCatalog.WRITE_SUCCEEDED);
+                                    TaskResult taskResult = new TaskResult(taskUUID, true, numberOfRowsInTask, tableStats);
+                                    return taskResult;
+                                }
+
+                                if (taskMessages.get(taskUUID) == null) {
+                                    taskMessages.put(taskUUID, new ArrayList<String>());
+                                }
+
+                                ChaosMonkey chaosMonkey = new ChaosMonkey();
+
+                                if (chaosMonkey.feelsLikeThrowingExceptionAfterTaskSubmitted()) {
+                                    throw new Exception("Chaos monkey exception for submitted task!");
+                                }
+                                if (chaosMonkey.feelsLikeFailingSubmitedTaskWithoutException()) {
+                                    taskStatus.put(taskUUID, TaskStatusCatalog.WRITE_FAILED);
+                                    TaskResult taskResult = new TaskResult(taskUUID, false, numberOfRowsInTask, tableStats);
+                                    return taskResult;
+                                }
+
+                                taskStatus.put(taskUUID, TaskStatusCatalog.WRITE_IN_PROGRESS);
+                                replicatorMetrics.incApplierTasksInProgressCounter();
+
+                                if (chaosMonkey.feelsLikeThrowingExceptionForTaskInProgress()) {
+                                    throw new Exception("Chaos monkey exception for task in progress!");
+                                }
+                                if (chaosMonkey.feelsLikeFailingTaskInProgessWithoutException()) {
+                                    taskStatus.put(taskUUID, TaskStatusCatalog.WRITE_FAILED);
+                                    TaskResult taskResult = new TaskResult(taskUUID, false, numberOfRowsInTask, tableStats);
+                                    return taskResult;
+                                }
+
+                                for (final String transactionUUID : taskMutationBuffer.get(taskUUID).keySet()) {
+
+                                    int numberOfTablesInCurrentTransaction = taskMutationBuffer.get(taskUUID).get(transactionUUID).keySet().size();
+
+                                    int numberOfFlushedTablesInCurrentTransaction = 0;
+
+                                    for (final String bufferedTableName : taskMutationBuffer.get(taskUUID).get(transactionUUID).keySet()) {
+
+                                        TableName TABLE = TableName.valueOf(bufferedTableName);
+                                        Table hbaseTable = hbaseConnection.getTable(TABLE);
+
+                                        if (chaosMonkey.feelsLikeThrowingExceptionBeforeFlushingData()) {
+                                            throw new Exception("Chaos monkey is here to prevent call to flush!!!");
+                                        } else if (chaosMonkey.feelsLikeFailingDataFlushWithoutException()) {
+                                            taskStatus.put(taskUUID, TaskStatusCatalog.WRITE_FAILED);
+                                            TaskResult taskResult = new TaskResult(taskUUID, false, numberOfRowsInTask, tableStats);
+                                            return taskResult;
+                                        } else {
+                                            hbaseTable.put(taskMutationBuffer.get(taskUUID).get(transactionUUID).get(bufferedTableName));
+                                            numberOfFlushedTablesInCurrentTransaction++;
+                                        }
+                                    } // next table
+
+                                    // exception listener callback report
+                                    if (taskMessages.get(taskUUID).size() > 0) {
+                                        taskStatus.put(taskUUID, TaskStatusCatalog.WRITE_FAILED);
+                                        TaskResult taskResult = new TaskResult(taskUUID, false, numberOfRowsInTask, tableStats);
+                                        return taskResult;
+                                    }
+
+                                    // data integrity check
+                                    if (numberOfTablesInCurrentTransaction != numberOfFlushedTablesInCurrentTransaction) {
+                                        taskStatus.put(taskUUID, TaskStatusCatalog.WRITE_FAILED);
+                                        TaskResult taskResult = new TaskResult(taskUUID, false, numberOfRowsInTask, tableStats);
+                                        return taskResult;
+                                    }
+                                } // next transaction
+
+                                taskStatus.put(taskUUID, TaskStatusCatalog.WRITE_SUCCEEDED);
+                                TaskResult taskResult = new TaskResult(taskUUID, true, numberOfRowsInTask, tableStats);
+                                return taskResult;
+                            } catch (NullPointerException e) {
+                                LOGGER.error("NullPointerException in future", e);
+                                e.printStackTrace();
+                                System.exit(1);
+                            }
+                            return null;
+                        }
+                    }));
+                } else {
+                    LOGGER.error("Task is marked as READY_FOR_PICK_UP, but has no rows. Exiting...");
+                    System.exit(1);
+                }
             }
         }
     }
