@@ -32,7 +32,7 @@ class CopyThread(threading.Thread):
 class BlackholeCopyMethod(object):
 
     def pre(self, config, tables):
-        source = MySQLdb.connect(read_default_file=config['source'], cursorclass=Cursor)
+        source = MySQLdb.connect(read_default_file=config['source'], cursorclass=Cursor, host=config['host'])
         cursor = source.cursor()
         done = []
         sql = 'reset master'
@@ -75,7 +75,7 @@ class BlackholeCopyMethod(object):
             done.append((table[0], table[1]))
 
     def do_copy(self, config, table):
-        source = MySQLdb.connect(read_default_file=config['source'], cursorclass=Cursor)
+        source = MySQLdb.connect(read_default_file=config['source'], cursorclass=Cursor, host=config['host'])
         cursor = source.cursor()
         if len(table) == 3:
             sql = """SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = %s and table_name = %s and column_key='PRI'"""
@@ -116,7 +116,7 @@ class BlackholeCopyMethod(object):
         cursor.close()
 
     def post(self, config, tables):
-        source = MySQLdb.connect(read_default_file=config['source'], cursorclass=Cursor)
+        source = MySQLdb.connect(read_default_file=config['source'], cursorclass=Cursor, host=config['host'])
         cursor = source.cursor()
         sql = 'set sql_log_bin=0'
         print sql
@@ -137,7 +137,7 @@ class BlackholeCopyMethod(object):
         cursor.execute(sql)
 
 def get_tables(config):
-    source = MySQLdb.connect(read_default_file=config['source'], cursorclass=Cursor)
+    source = MySQLdb.connect(read_default_file=config['source'], cursorclass=Cursor, host=config['host'])
     cursor = source.cursor()
     cursor.execute('SELECT table_schema, table_name from information_schema.tables')
     tables = cursor.fetchall()
@@ -187,17 +187,20 @@ def queue_tables(config, tables):
 @click.option('--stop-slave/--no-stop-slave', default=True, help='stop the replication thread whilst running the copy')
 @click.option('--start-slave/--no-start-slave', default=False, help='restart the replication thread after running the copy')
 @click.option('--method', default='BlackholeCopy', help='Copy method class')
-def run(mycnf, db, table, stop_slave, start_slave, method):
+@click.option('--host', help='Host name')
+def run(mycnf, db, table, stop_slave, start_slave, method, host):
     config = {
-        'source' : '/root/.my.cnf',
+        'source' : mycnf,
     }
+    if host:
+        config['host'] = host
     if db:
         config['db'] = db.split(',')
     if table:
         config['table'] = table.split(',')
     if method == 'BlackholeCopy':
         config['method'] = BlackholeCopyMethod()
-    source = MySQLdb.connect(read_default_file=config['source'], cursorclass=Cursor)
+    source = MySQLdb.connect(read_default_file=config['source'], cursorclass=Cursor, host=config['host'])
     cursor = source.cursor()
     if stop_slave:
         sql = 'stop slave'
