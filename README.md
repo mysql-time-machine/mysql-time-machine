@@ -7,6 +7,7 @@ In testing, beta-level quality.
 
 # USAGE
 ### Initial snapshot
+python data-flusher.py --mycnf .my.cnf --host $host [--db $db] [--table $table]
 java -jar hbrepl-0.9.8.jar --dc $dc --applier $applier --schema $schema --binlog-filename $first-binlog-filename --config-path $config-path --shard $shard --initial-snapshot
 ### Replication
 java -jar hbrepl-0.9.8.jar --dc $dc --applier $applier --schema $schema --binlog-filename $binlog-filename --config-path $config-path --shard $shard --delta
@@ -33,6 +34,13 @@ One yml file. Example of config file:
         namespace: 'my.graphite.namespace'
     hive_imports:
         replicated_schema_name: ['table_1', ..., 'table_N']
+
+One .my.cnf file containing admin privileges used for the creating initial snapshot.
+````
+    [client]
+    user=admin
+    password=admin
+````
 
 # AUTHOR
 Bosko Devetak <bosko.devetak@gmail.com>
