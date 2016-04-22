@@ -1,5 +1,31 @@
 Revision history for MySQL-Time-Machine
 
+Release 0.9.9  Date/Time: 2016-04-22
+
+    [ENHANCEMENTS]
+    - Parallelized the mutations generator since that was the CPU bottleneck. Now
+      Initial snapshots are order of magnitude faster.
+
+    [MINOR ENHANCEMENTS]
+    - Make delta tables config optional
+    - Change in the salting algorithim:
+        -> instead of first two bytes we use first 4 bytes of md5
+        -> instead '-' we use ';' to connect salt with the rest of the key
+
+    [BUG FIXES]
+    - Tables created in different timezones are now supported, so default
+      timestamp won't be invalid in active_schema timezone
+    - Removed the limit for maximum KeyValue size in HBase so put won't brake
+      on large blobs
+    - Dont create daily yyyymmdd tables if table is not listed in yml config
+    - Fix for empty buffer-on-rotate event bug
+    - Fixed a bug for counter increment (that would occasionaly be skiped) for
+      table-level metrics
+    - Fixed a bug with init for table-totals metric which resulted in occasionally
+      some metrics being lost witch resulted in checkpoint not being passed
+    - Fix bug which identified some DDL statements as commit or begin
+    - Fix checkpoint test for case when --delta is off
+
 Release 0.9.8  Date/Time: 2016-04-01
 
         [ENHANCEMENTS]
