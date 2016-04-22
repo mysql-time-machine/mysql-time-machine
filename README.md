@@ -6,11 +6,17 @@ for auditing purposes of historical data.
 In testing, beta-level quality.
 
 # USAGE
-### Initial snapshot
+
+## Initial snapshot
+
+### Flush db to binlog
 python data-flusher.py --mycnf .my.cnf --host $host [--db $db] [--table $table]
-java -jar hbrepl-0.9.8.jar --dc $dc --applier $applier --schema $schema --binlog-filename $first-binlog-filename --config-path $config-path --shard $shard --initial-snapshot
+
+### replicate initial snapshot to hbase
+java -jar hbrepl-0.9.9.jar --dc $dc --applier $applier --schema $schema --binlog-filename $first-binlog-filename --config-path $config-path --shard $shard --initial-snapshot
+
 ### Replication
-java -jar hbrepl-0.9.8.jar --dc $dc --applier $applier --schema $schema --binlog-filename $binlog-filename --config-path $config-path --shard $shard --delta
+java -jar hbrepl-0.9.9.jar --dc $dc --applier $applier --schema $schema --binlog-filename $binlog-filename --config-path $config-path --shard $shard --delta
 
 # CONFIGURATION
 One yml file. Example of config file:
