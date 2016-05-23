@@ -21,7 +21,8 @@ java -jar hbrepl-0.9.9.jar --hbase-namespace $hbase-namespace --applier $applier
 # CONFIGURATION
 One yml file for replicator. Example of config file:
 
-    replicated_schema_name:
+    replication_schema:
+        name:     'replicated_schema_name'
         username: 'user'
         password: 'pass'
         slaves:   ['localhost', 'localhost']
