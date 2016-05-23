@@ -21,19 +21,20 @@ java -jar hbrepl-0.9.9.jar --hbase-namespace $hbase-namespace --applier $applier
 # CONFIGURATION
 One yml file for replicator. Example of config file:
 
-replicated_schema_name:
-    username: 'user'
-    password: 'pass'
-    slaves:   ['localhost', 'localhost']
-metadata_store:
-    username: 'user'
-    password: 'pass'
-    hosts: ['localhost', 'localhost']
-zookeepers:
-    quorum:  ['hbase-zk1-host', 'hbase-zkN-host']
-graphite:
-    namespace: 'no-stats'
-hive_imports:
+    replicated_schema_name:
+        username: 'user'
+        password: 'pass'
+        slaves:   ['localhost', 'localhost']
+    metadata_store:
+        username: 'user'
+        password: 'pass'
+        hosts: ['localhost', 'localhost']
+    zookeepers:
+        quorum:  ['hbase-zk1-host', 'hbase-zkN-host']
+    graphite:
+        namespace: 'no-stats'
+    hive_imports:
+        replicated_schema_name: ['sometable']
 
 One .my.cnf file containing admin privileges used for the blackhole_copy initial snapshot.
 ````
