@@ -13,35 +13,29 @@ In testing, beta-level quality.
 python data-flusher.py --mycnf .my.cnf --host $host [--db $db] [--table $table]
 
 ### replicate initial snapshot to hbase
-java -jar hbrepl-0.9.9.jar --dc $dc --applier $applier --schema $schema --binlog-filename $first-binlog-filename --config-path $config-path --shard $shard --initial-snapshot
+java -jar hbrepl-0.9.9-1.jar --hbase-namespace $hbase-namespace --applier $applier --schema $schema --binlog-filename $first-binlog-filename --config-path $config-path --shard $shard --initial-snapshot
 
 ### Replication
-java -jar hbrepl-0.9.9.jar --dc $dc --applier $applier --schema $schema --binlog-filename $binlog-filename --config-path $config-path --shard $shard --delta
+java -jar hbrepl-0.9.9.jar --hbase-namespace $hbase-namespace --applier $applier --schema $schema --binlog-filename $binlog-filename --config-path $config-path --shard $shard --delta
 
 # CONFIGURATION
-One yml file. Example of config file:
+One yml file for replicator. Example of config file:
 
-    schema_history:
-        username: 'user'
-        password: 'pass'
-        host:
-            dc1: 'dc1-host'
-            dc2: 'dc2-host'
-    replicated_schema_name:
-        username: 'user'
-        password: 'pass'
-        slaves:
-            dc1: ['dc1-host-01', 'dc1-host-02']
-            dc2: ['dc2-host-01']
-    zookeepers:
-        dc1: 'hbase-dc1-zk1-host, ..., hbase-dc1-zk5-host'
-        dc2: 'hbase-dc2-zk1-host, ..., hbase-dc2-zk5-host'
-    graphite:
-        namespace: 'my.graphite.namespace'
-    hive_imports:
-        replicated_schema_name: ['table_1', ..., 'table_N']
+replicated_schema_name:
+    username: 'user'
+    password: 'pass'
+    slaves:   ['localhost', 'localhost']
+metadata_store:
+    username: 'user'
+    password: 'pass'
+    hosts: ['localhost', 'localhost']
+zookeepers:
+    quorum:  ['hbase-zk1-host', 'hbase-zkN-host']
+graphite:
+    namespace: 'no-stats'
+hive_imports:
 
-One .my.cnf file containing admin privileges used for the creating initial snapshot.
+One .my.cnf file containing admin privileges used for the blackhole_copy initial snapshot.
 ````
     [client]
     user=admin
