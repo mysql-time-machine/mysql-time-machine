@@ -29,7 +29,7 @@ One yml file for replicator. Example of config file:
     metadata_store:
         username: 'user'
         password: 'pass'
-        hosts: ['localhost', 'localhost']
+        dsn: 'jdbc:mysql://active_schema_host/active_schema_database'
     zookeepers:
         quorum:  ['hbase-zk1-host', 'hbase-zkN-host']
     graphite:
