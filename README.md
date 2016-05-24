@@ -29,10 +29,12 @@ One yml file for replicator. Example of config file:
     metadata_store:
         username: 'user'
         password: 'pass'
-        dsn: 'jdbc:mysql://active_schema_host/active_schema_database'
+        host:     'active_schema_host'
+        database: 'active_schema_database'
     zookeepers:
         quorum:  ['hbase-zk1-host', 'hbase-zkN-host']
     graphite:
+        url:       'graphite_host[:<graphite_port>]'
         namespace: 'no-stats'
     hive_imports:
         replicated_schema_name: ['sometable']
