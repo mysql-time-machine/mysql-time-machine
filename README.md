@@ -37,7 +37,7 @@ One yml file for replicator. Example of config file:
         url:       'graphite_host[:<graphite_port>]'
         namespace: 'no-stats'
     hive_imports:
-        replicated_schema_name: ['sometable']
+        tables: ['sometable']
 
 One .my.cnf file containing admin privileges used for the blackhole_copy initial snapshot.
 ````
