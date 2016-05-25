@@ -31,8 +31,9 @@ One yml file for replicator. Example of config file:
         password: 'pass'
         host:     'active_schema_host'
         database: 'active_schema_database'
-    zookeepers:
-        quorum:  ['hbase-zk1-host', 'hbase-zkN-host']
+    hbase:
+        namespace: 'schema_namespace'
+        zookeeper_quorum:  ['hbase-zk1-host', 'hbase-zkN-host']
     graphite:
         url:       'graphite_host[:<graphite_port>]'
         namespace: 'no-stats'
