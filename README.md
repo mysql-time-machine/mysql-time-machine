@@ -13,10 +13,10 @@ In testing, beta-level quality.
 python data-flusher.py --mycnf .my.cnf --host $host [--db $db] [--table $table]
 
 ### replicate initial snapshot to hbase
-java -jar hbrepl-0.9.9-1.jar --hbase-namespace $hbase-namespace --applier $applier --schema $schema --binlog-filename $first-binlog-filename --config-path $config-path --shard $shard --initial-snapshot
+java -jar hbrepl-0.9.9-3.jar --hbase-namespace $hbase-namespace --applier $applier --schema $schema --binlog-filename $first-binlog-filename --config-path $config-path --shard $shard --initial-snapshot
 
 ### Replication
-java -jar hbrepl-0.9.9.jar --hbase-namespace $hbase-namespace --applier $applier --schema $schema --binlog-filename $binlog-filename --config-path $config-path --shard $shard --delta
+java -jar hbrepl-0.9.9-3.jar --hbase-namespace $hbase-namespace --applier $applier --schema $schema --binlog-filename $binlog-filename --config-path $config-path --shard $shard --delta
 
 # CONFIGURATION
 One yml file for replicator. Example of config file:
