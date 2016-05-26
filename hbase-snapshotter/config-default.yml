@@ -1,0 +1,5 @@
+hbase:
+    zookeeper_quorum:  ['hbase-zk1-host', 'hbase-zkN-host']
+    schema: ['family1:qualifier1', 'familyN:qualifierN']
+hive:
+    default_null: 'NULL'
