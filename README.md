@@ -1,54 +1,83 @@
-# MySQL to HBase Replicator.
-Replicates data changes from MySQL binlog to HBase, preserving the previous data versions. Intended
-for auditing purposes of historical data.
+# MySQL Time Machine
+Collection of services and tools for creating, processing and storing streams of MySQL data changes.
 
-# STATUS
-In testing, beta-level quality.
+# Status
+Testing, beta-level quality.
 
-# USAGE
+# Components:
 
-## Initial snapshot
+## Binlog Flusher
+Flushes MySQL database tables to the binlog in order to have the initial snapshot of the database in the binlog.
 
-### Flush db to binlog
-python data-flusher.py --mycnf .my.cnf --host $host [--db $db] [--table $table]
-
-### replicate initial snapshot to hbase
-java -jar hbrepl-0.9.9-3.jar --hbase-namespace $hbase-namespace --applier $applier --schema $schema --binlog-filename $first-binlog-filename --config-path $config-path --shard $shard --initial-snapshot
-
-### Replication
-java -jar hbrepl-0.9.9-3.jar --hbase-namespace $hbase-namespace --applier $applier --schema $schema --binlog-filename $binlog-filename --config-path $config-path --shard $shard --delta
-
-# CONFIGURATION
-One yml file for replicator. Example of config file:
-
-    replication_schema:
-        name:     'replicated_schema_name'
-        username: 'user'
-        password: 'pass'
-        slaves:   ['localhost', 'localhost']
-    metadata_store:
-        username: 'user'
-        password: 'pass'
-        host:     'active_schema_host'
-        database: 'active_schema_database'
-    hbase:
-        namespace: 'schema_namespace'
-        zookeeper_quorum:  ['hbase-zk1-host', 'hbase-zkN-host']
-    graphite:
-        url:       'graphite_host[:<graphite_port>]'
-        namespace: 'no-stats'
-    hive_imports:
-        tables: ['sometable']
-
-One .my.cnf file containing admin privileges used for the blackhole_copy initial snapshot.
+### Usage
+Flush database to binlog with:
 ````
-    [client]
-    user=admin
-    password=admin
+python data-flusher.py --mycnf .my.cnf --host $host [--db $db] [--table $table]
+````
+Where .my.cnf contains the admin privileges used for the blackhole_copy of initial snapshot.
+````
+[client]
+user=admin
+password=admin
+````
+Then start replication with
+````
+mysql> start slave;
+````
+
+## MySQL to HBase Replicator.
+Replicates data changes from MySQL binlog to HBase, preserving the previous data versions. Intended
+for auditing purposes of historical data. In addition can maintain special daily-changes tables which
+are convenient for fast and cheap imports from HBase to Hive.
+
+### Usage
+#### Replicate initial binlog snapshot to hbase
+````
+java -jar hbrepl-0.9.9-3.jar --hbase-namespace $hbase-namespace --applier hbase --schema $schema --binlog-filename $first-binlog-filename --config-path $config-path [--shard $shard] --initial-snapshot
+````
+
+#### Replication after initial snapshot
+````
+java -jar hbrepl-0.9.9-3.jar --hbase-namespace $hbase-namespace --applier hbase --schema $schema --binlog-filename $binlog-filename --config-path $config-path [--shard $shard] [--delta]
+````
+
+#### Replicate range of binlog files and output db events as JSON to STDOUT:
+````
+java -jar hbrepl-0.9.9-3.jar --applier STDOUT --schema $schema --binlog-filename $binlog-filename --last-binlog-filename $last-binlog-filename-to-process --config-path $config-path 
+````
+
+#### Configuration file structure:
+````
+replication_schema:
+    name:     'replicated_schema_name'
+    username: 'user'
+    password: 'pass'
+    slaves:   ['localhost', 'localhost']
+metadata_store:
+    username: 'user'
+    password: 'pass'
+    host:     'active_schema_host'
+    database: 'active_schema_database'
+hbase:
+    namespace: 'schema_namespace'
+    zookeeper_quorum:  ['hbase-zk1-host', 'hbase-zkN-host']
+graphite:
+    url:       'graphite_host[:<graphite_port>]'
+    namespace: 'no-stats'
+hive_imports:
+    tables: ['sometable']
 ````
 
 # AUTHOR
 Bosko Devetak <bosko.devetak@gmail.com>
+
+# CONTRIBUTORS
+Greg Franklin <a href="https://github.com/gregf1">gregf1</a>
+
+Rares Mirica <a href="https://github.com/mrares">mrares</a>
+
+Mikhail Dutikov <a href="https://github.com/mikhaildutikov">mikhaildutikov</a>
+
 
 # ACKNOWLEDGMENT
 Replicator was originally developed for Booking.com. With approval from Booking.com, the code and specification were generalized and published as Open Source on github, for which the author would like to express his gratitude.
