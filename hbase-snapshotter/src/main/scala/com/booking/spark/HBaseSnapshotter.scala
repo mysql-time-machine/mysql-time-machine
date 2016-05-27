@@ -102,6 +102,7 @@ object HBaseSnapshotter {
     * @param rowKey The key of the HBase row.
     * @param familyMap A hashmap holding the values of the current row.
     * @param schema a struct that specifies how the schema would look like in Hive table.
+    * @param defaultNull The value to be used in Hive table, if the cell value was missing from the source HBase table.
     * @return an object of type Row holding the row data.
     */
   def transformMapToRow(rowKey: String,
