@@ -27,7 +27,7 @@ Rares Mirica <a href="https://github.com/mrares">mrares</a>
 
 Mikhail Dutikov <a href="https://github.com/mikhaildutikov">mikhaildutikov</a>
 
-Islam Hassan <fci.islam@gmail.com>
+Islam Hassan <a href="https://github.com/ishassan">ishassan</a>
 
 # ACKNOWLEDGMENT
 Replicator was originally developed for Booking.com. With approval from Booking.com, the code and specification were generalized and published as Open Source on github, for which the author would like to express his gratitude.
