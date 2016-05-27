@@ -83,8 +83,11 @@ object HBaseSnapshotter {
       scan.setTimeRange(0, cmdArgs.pit)
     // Scans the given HBase table into an RDD.
     val hbaseRDD = hbaseContext.hbaseRDD(cmdArgs.hbaseTableName, scan, {r: (ImmutableBytesWritable, Result) => r._2})
-    // Mapping every row in HBase to a Row object in a Spark Dataframe
     val defaultNull:String = configParser.getDefaultNull
+    // Mapping every row in HBase to a Row object in a Spark Dataframe
+    // Note: familyMap has a custom comparator. The entries are sorted from newest to oldest.
+    // map.firstEntry() is the newest entry (with largest timestamp). This is different than the default behaviour
+    // of firstEntry() and lastEntry().
     val rowRDD = hbaseRDD.map(hbaseRow => {
       val rowKey = Bytes.toStringBinary(hbaseRow.getRow)
       val familyMap = hbaseRow.getMap
@@ -123,7 +126,7 @@ object HBaseSnapshotter {
         try{
           val value = familyMap.get(Bytes.toBytes(familyName))
             .get(Bytes.toBytes(qualifierName))
-            .lastEntry().getValue
+            .firstEntry().getValue
           rowValues(fieldIndex) = Bytes.toStringBinary(value)
         }
         catch{
