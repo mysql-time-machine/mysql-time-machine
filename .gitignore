@@ -1,2 +1,13 @@
-.class
-.jar
+*.class
+*.swp
+.idea
+*.iml
+target/
+.project
+.settings
+.mtj.tmp/
+*.jar
+*.war
+*.ear
+hs_err_pid*
+dependency-reduced-pom.xml
