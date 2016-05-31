@@ -5,13 +5,14 @@ import com.booking.replication.util.StartupParameters;
 import com.booking.replication.util.YAML;
 import joptsimple.OptionSet;
 import org.apache.commons.cli.MissingArgumentException;
+import org.apache.commons.math3.linear.SymmLQ;
+import org.jruby.RubyProcess;
+import zookeeper.ZookeeperTalk;
+import zookeeper.impl.ZookeeperTalkImpl;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.net.URISyntaxException;
 import java.sql.SQLException;
-import java.util.concurrent.TimeUnit;
 
 public class Main {
 
@@ -28,7 +29,12 @@ public class Main {
 
         Replicator replicator;
 
+        ZookeeperTalk zkTalk = new ZookeeperTalkImpl(configuration);
+
         try {
+            while (!zkTalk.amIALeader()) {
+                Thread.sleep(1000);
+            }
             replicator = new Replicator(configuration);
             replicator.start();
         } catch (SQLException e) {

@@ -3,6 +3,9 @@ package com.booking.replication;
 import com.booking.replication.applier.Applier;
 import com.booking.replication.applier.HBaseApplier;
 import com.booking.replication.applier.STDOUTJSONApplier;
+import com.booking.replication.checkpoints.SafeCheckPoint;
+import com.booking.replication.checkpoints.SafeCheckPointFactory;
+import com.booking.replication.checkpoints.SafeCheckpointType;
 import com.booking.replication.metrics.ReplicatorMetrics;
 import com.booking.replication.pipeline.BinlogEventProducer;
 import com.booking.replication.pipeline.PipelineOrchestrator;
@@ -36,6 +39,7 @@ public class Replicator {
     private final PipelineOrchestrator pipelineOrchestrator;
     private final Overseer             overseer;
     private final Applier              applier;
+    private final SafeCheckPoint       safeCheckPoint;
 
     private final ConcurrentHashMap<Integer,Object> lastKnownInfo =
             new ConcurrentHashMap<Integer, Object>();
@@ -47,6 +51,10 @@ public class Replicator {
 
         // Configuration
         configuration  = conf;
+
+        // Safe Check Point
+        safeCheckPoint = SafeCheckPointFactory.getSafeCheckPoint(SafeCheckpointType.BINLOG_FILENAME);
+        safeCheckPoint.setSafeCheckPointMarker(conf.getStartingBinlogFileName());
 
         // Queues
         replicatorQueues = new ReplicatorQueues();
@@ -105,7 +113,6 @@ public class Replicator {
                 replicatorMetrics,
                 lastKnownInfo
         );
-
     }
 
     // start()
