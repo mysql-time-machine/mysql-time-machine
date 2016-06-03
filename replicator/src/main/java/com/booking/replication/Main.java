@@ -16,6 +16,7 @@ import java.nio.file.Paths;
 import java.net.URISyntaxException;
 import java.sql.SQLException;
 
+
 public class Main {
 
     public static void main(String[] args) throws Exception {
@@ -44,10 +45,11 @@ public class Main {
             return;
         }
 
+
         System.out.println("loaded configuration: \n" + configuration.toString());
 
-        Coordinator.setConfiguration(configuration);
         CoordinatorInterface coordinator;
+
         switch (configuration.getMetadataStoreType()) {
             case Configuration.METADATASTORE_ZOOKEEPER:
                 coordinator = new ZookeeperCoordinator(configuration);
@@ -58,6 +60,13 @@ public class Main {
             default:
                 throw new RuntimeException(String.format("Metadata store type not implemented: %s", configuration.getMetadataStoreType()));
         }
+
+//
+//        String s = mapper.writeValueAsString(configuration.metrics);
+//        System.out.println(s);
+
+        Metrics.setGraphiteReporter(configuration);
+
         Coordinator.setImplementation(coordinator);
 
         Coordinator.onLeaderElection(
@@ -65,6 +74,7 @@ public class Main {
                 @Override
                 public void run() {
                     try {
+                        Metrics.startReport();
                         new Replicator(configuration).start();
                     } catch (SQLException | URISyntaxException | IOException e) {
                         e.printStackTrace();

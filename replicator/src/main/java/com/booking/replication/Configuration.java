@@ -1,6 +1,10 @@
 package com.booking.replication;
 
+import com.booking.replication.util.Duration;
 import com.booking.replication.util.StartupParameters;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.annotation.JsonTypeName;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
@@ -8,6 +12,7 @@ import com.google.common.base.Joiner;
 
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.google.common.collect.ImmutableList;
 
 import java.io.Serializable;
 import java.util.Collections;
@@ -87,17 +92,37 @@ public class Configuration {
     public int getMetadataStoreType() {
         if(this.metadata_store.zookeeper != null) {
             return METADATASTORE_ZOOKEEPER;
-        } else {
+        } else if (this.metadata_store.file != null) {
             return METADATASTORE_FILE;
+        } else {
+            throw new RuntimeException("Metadata store not configured, please define a zookeeper or file metadata store.");
         }
     }
+
 
     @JsonDeserialize
     private GraphiteConfig graphite;
 
     private static class GraphiteConfig {
-        public String       namespace;
-        public String       url;
+        public String url;
+        public String namespace;
+    }
+
+    @JsonDeserialize
+    public MetricsConfig metrics;
+
+    private static class MetricsConfig {
+        public Duration     frequency;
+
+        public List<ReporterConfig> reporters;
+
+        private static class ReporterConfig {
+            public Duration     frequency;
+            public String       type;
+            public String       output;
+            public String       namespace;
+            public String       timeZone;
+        }
     }
 
 

@@ -1,11 +1,12 @@
 package com.booking.replication.applier;
 
 import com.booking.replication.Constants;
-import com.booking.replication.checkpoints.CheckPointTests;
+//import com.booking.replication.checkpoints.CheckPointTests;
 
 import com.booking.replication.augmenter.AugmentedRowsEvent;
 import com.booking.replication.augmenter.AugmentedSchemaChangeEvent;
-import com.booking.replication.metrics.*;
+//import com.booking.replication.metrics.*;
+import com.booking.replication.Metrics;
 import com.booking.replication.pipeline.PipelineOrchestrator;
 
 import com.booking.replication.queues.ReplicatorQueues;
@@ -47,7 +48,7 @@ public class HBaseApplier implements Applier {
 
     private static final Configuration hbaseConf = HBaseConfiguration.create();
 
-    private final ReplicatorMetrics replicatorMetrics;
+//    private final ReplicatorMetrics replicatorMetrics;
 
     private final HBaseSchemaManager hBaseSchemaManager;
 
@@ -63,21 +64,21 @@ public class HBaseApplier implements Applier {
      * HBaseApplier constructor
      *
      * @param ZOOKEEPER_QUORUM
-     * @param repMetrics
+//     * @param repMetrics
      * @throws IOException
      */
     public HBaseApplier(
 
             ReplicatorQueues                      repQueues,
             String                                ZOOKEEPER_QUORUM,
-            ReplicatorMetrics                     repMetrics,
+//            ReplicatorMetrics                     repMetrics,
             com.booking.replication.Configuration repCfg
 
         ) throws IOException {
 
         configuration     = repCfg;
         queues            = repQueues;
-        replicatorMetrics = repMetrics;
+//        replicatorMetrics = repMetrics;
 
         hbaseConf.set("hbase.zookeeper.quorum", ZOOKEEPER_QUORUM);
         hbaseConf.set("hbase.client.keyvalue.maxsize", "0");
@@ -86,7 +87,7 @@ public class HBaseApplier implements Applier {
             new HBaseApplierWriter(
                 repQueues,
                 POOL_SIZE,
-                repMetrics,
+//                repMetrics,
                 hbaseConf,
                 repCfg
             );
@@ -223,19 +224,38 @@ public class HBaseApplier implements Applier {
     }
 
     @Override
-    public void waitUntilAllRowsAreCommitted(CheckPointTests checkPointTests) {
+//    public void waitUntilAllRowsAreCommitted(CheckPointTests checkPointTests) {
+    public void waitUntilAllRowsAreCommitted() {
         boolean wait = true;
+
+
+        LOGGER.info("WAITING FOR COMMITS ON HBASE!");
 
         while (wait) {
 
-            Totals totals = replicatorMetrics.getTotalsSnapshot();
-            BigInteger totalHBaseRowsAffected = totals.getTotalHbaseRowsAffected().getValue();
-            BigInteger totalMySQLRowsProcessed = totals.getTotalRowsProcessed().getValue();
+//            hbaseApplierWriter.areAllTasksDone();
 
-            LOGGER.info("hbaseTotalRowsCommited  => " + totalHBaseRowsAffected);
-            LOGGER.info("mysqlTotalRowsProcessed => " + totalMySQLRowsProcessed);
+//            Totals totals = replicatorMetrics.getTotalsSnapshot();
+//            BigInteger totalHBaseRowsAffected = totals.getTotalHbaseRowsAffected().getValue();
+//            BigInteger totalMySQLRowsProcessed = totals.getTotalRowsProcessed().getValue();
 
-            if (checkPointTests.verifyConsistentCountersOnRotateEvent(totalHBaseRowsAffected, totalMySQLRowsProcessed)) {
+//            LOGGER.info("hbaseTotalRowsCommited  => " + totalHBaseRowsAffected);
+//            LOGGER.info("mysqlTotalRowsProcessed => " + totalMySQLRowsProcessed);
+
+//            boolean verifiedConsistency = checkPointTests.verifyConsistentCountersOnRotateEvent(totalHBaseRowsAffected, totalMySQLRowsProcessed);
+            boolean allTasksDone = hbaseApplierWriter.areAllTasksDone();
+
+//            LOGGER.info(String.format("Verified consistency: %s", verifiedConsistency));
+            LOGGER.info(String.format("areAllTasksDone: %s", allTasksDone));
+
+//            if(allTasksDone != verifiedConsistency) {
+//                LOGGER.error(String.format("Verified consistency is not the same as all tasks done: %s != %s", verifiedConsistency, allTasksDone));
+//                throw new RuntimeException("consistency is disagreeing with aTD");
+//            }
+
+//            if (checkPointTests.verifyConsistentCountersOnRotateEvent(totalHBaseRowsAffected, totalMySQLRowsProcessed)) {
+            if (allTasksDone) {
+                LOGGER.info("All is committed!");
                 wait = false;
             }
             else {
@@ -256,22 +276,24 @@ public class HBaseApplier implements Applier {
     @Override
     public void dumpStats() {
 
-        Map<Integer, TotalsPerTimeSlot> metricsSnapshot = replicatorMetrics.getMetricsSnapshot();
+        Metrics.report();
 
-        for (Integer timebucket : metricsSnapshot.keySet()) {
-
-            LOGGER.debug("dumping stats for bucket => " + timebucket);
-
-            TotalsPerTimeSlot timebucketStats;
-            timebucketStats = replicatorMetrics.getMetricsSnapshot().get(timebucket);
-
-            INameValue[] metricNamesAndValues = timebucketStats.getAllNamesAndValues();
-
-            for (int i = 0; i < metricNamesAndValues.length; i++)
-            {
-                LOGGER.info(String.format("%s => %s @ %s", metricNamesAndValues[i].getName(), metricNamesAndValues[i].getValue(),
-                        timebucket));
-            }
-        }
+//        Map<Integer, TotalsPerTimeSlot> metricsSnapshot = replicatorMetrics.getMetricsSnapshot();
+//
+//        for (Integer timebucket : metricsSnapshot.keySet()) {
+//
+//            LOGGER.debug("dumping stats for bucket => " + timebucket);
+//
+//            TotalsPerTimeSlot timebucketStats;
+//            timebucketStats = replicatorMetrics.getMetricsSnapshot().get(timebucket);
+//
+//            INameValue[] metricNamesAndValues = timebucketStats.getAllNamesAndValues();
+//
+//            for (int i = 0; i < metricNamesAndValues.length; i++)
+//            {
+//                LOGGER.info(String.format("%s => %s @ %s", metricNamesAndValues[i].getName(), metricNamesAndValues[i].getValue(),
+//                        timebucket));
+//            }
+//        }
     }
 }
