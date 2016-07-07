@@ -1,5 +1,5 @@
 resolvers ++= Seq(
-  "Hadoop Releases" at "https://repository.cloudera.com/content/repositories/releases/"
+  "Hadoop Releases" at "https://repository.cloudera.com/artifactory/cloudera-repos/"
 )
 
 libraryDependencies ++= Seq(
@@ -11,13 +11,13 @@ libraryDependencies ++= Seq(
   "org.apache.hbase" % "hbase-client" % "1.0.0",
   "org.apache.hbase" % "hbase-server" % "1.0.0" excludeAll(
     ExclusionRule("org.mortbay.jetty")
-    ),
+  ),
 
   "org.apache.spark" %% "spark-core" % "1.6.0" % "provided",
   "org.apache.spark" %% "spark-hive" % "1.6.0" % "provided",
   "com.cloudera" % "spark-hbase" % "0.0.2-clabs" excludeAll(
     ExclusionRule("org.mortbay.jetty")
-    )
+  )
 )
 
 dependencyOverrides += "com.google.guava" % "guava" % "15.0"

@@ -1,2 +1,2 @@
 #!/bin/bash
-spark-submit --class com.booking.hbase.PointInTimeSnapshotter --num-executors 100 HBaseSnapshotter-assembly-1.0.jar $@
+spark-submit --class com.booking.hbase.HBaseSnapshotter --num-executors 100 HBaseSnapshotter-assembly-1.0.jar $@
