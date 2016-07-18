@@ -9,7 +9,7 @@ Testing, beta-level quality.
 ## [Binlog Flusher](https://github.com/mysql-time-machine/mysql-time-machine/wiki/Binlog-Flusher)
 Flushes MySQL database tables to the binlog in order to have the initial snapshot of the database in the binlog.
 
-## [MySQL to HBase Replicator](https://github.com/mysql-time-machine/mysql-time-machine/wiki/MySQL-to-HBase-Replicator)
+## [Replicator](https://github.com/mysql-time-machine/mysql-time-machine/wiki/Replicator)
 Replicates data changes from MySQL binlog to HBase, preserving the previous data versions. Intended
 for auditing purposes of historical data. In addition can maintain special daily-changes tables which
 are convenient for fast and cheap imports from HBase to Hive.
