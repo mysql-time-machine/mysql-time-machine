@@ -15,12 +15,12 @@ Release 0.10.0  Date/Time: 2016-07-18
 
     [MINOR ENHANCEMENTS]
     - Refactored the HBase Applier  (Rares Mirica) 
-    - Refactored configuration to use serialisation from yml (Rares Mirica)
-    - Made AugmentedRow JSON seriazable (Rares Mirica)
+    - Refactored configuration to use serialization from yml (Rares Mirica)
+    - Made AugmentedRow JSON serializable (Rares Mirica)
     - Config file simplification: no lists for mysql hosts, only one host
 
     [BUG FIXES]
-    - Memmory leak bug in HBase Applier (Rares Mirica)
+    - Memory leak bug in HBase Applier (Rares Mirica)
     - Fixed OpenReplicator restart failure due to null pointer (Rares Mirica)
 
 Release 0.9.9  Date/Time: 2016-04-22
