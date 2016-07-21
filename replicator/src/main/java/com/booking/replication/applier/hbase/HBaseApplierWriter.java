@@ -422,7 +422,10 @@ public class HBaseApplierWriter {
                 requeueTask(submittedTaskUuid);
                 applierTasksFailedCounter.inc();
             } catch (CancellationException e) {
-                LOGGER.error("Task got canceeled", e);
+                LOGGER.error("Task got cancelled, resubmitting", e);
+                requeueTask(submittedTaskUuid);
+                submitTasksThatAreReadyForPickUp();
+                applierTasksFailedCounter.inc();
             } catch (Exception e) {
                 LOGGER.error(String.format("Inconsistent success reports for task %s. Will retry the task.",
                         submittedTaskUuid));
@@ -445,21 +448,23 @@ public class HBaseApplierWriter {
     }
 
     private Integer taskRowsBuffered(String taskUuid) {
-
-        int taskHasRows = 0;
+        int taskRows = 0;
 
         Map<String, TransactionProxy> task = taskTransactionBuffer.get(taskUuid);
+        if (task == null) {
+            throw new RuntimeException(String.format("Task %s is null", taskUuid));
+        }
 
         for (String transactionUuid : task.keySet()) {
             for (String tableName : task.get(transactionUuid).keySet()) {
                 List<AugmentedRow> bufferedOPS = task.get(transactionUuid).get(tableName);
                 if (bufferedOPS != null) {
-                    taskHasRows += bufferedOPS.size();
+                    taskRows += bufferedOPS.size();
                 }
             }
         }
 
-        return taskHasRows;
+        return taskRows;
     }
 
     /**
@@ -493,25 +498,7 @@ public class HBaseApplierWriter {
 
         // one future per task
         for (final String taskUuid : taskTransactionBuffer.keySet()) {
-
-            boolean taskHasRows = false;
-
-            Map<String, TransactionProxy> task = taskTransactionBuffer.get(taskUuid);
-            if (task == null) {
-                throw new RuntimeException(String.format("Task %s is null", taskUuid));
-            }
-
-            for (String transactionUuid : task.keySet()) {
-                Set<String> transactionTables = task.get(transactionUuid).keySet();
-                for (String tableName : transactionTables) {
-                    List<AugmentedRow> bufferedOPS = task.get(transactionUuid).get(tableName);
-                    if (bufferedOPS != null && bufferedOPS.size() > 0) {
-                        taskHasRows = true;
-                    } else {
-                        LOGGER.info("Table " + tableName + " has no rows!!!");
-                    }
-                }
-            }
+            boolean taskHasRows = taskRowsBuffered(taskUuid) > 0;
 
             // submit task
             if ((taskTransactionBuffer.get(taskUuid).getTaskStatus() == TaskStatus.READY_FOR_PICK_UP)) {

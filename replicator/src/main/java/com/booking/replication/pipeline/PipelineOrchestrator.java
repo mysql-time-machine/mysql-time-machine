@@ -13,8 +13,6 @@ import com.booking.replication.augmenter.EventAugmenter;
 import com.booking.replication.checkpoints.LastVerifiedBinlogFile;
 import com.booking.replication.queues.ReplicatorQueues;
 import com.booking.replication.schema.ActiveSchemaVersion;
-import com.booking.replication.schema.HBaseSchemaManager;
-import com.booking.replication.schema.TableNameMapper;
 import com.booking.replication.schema.exception.SchemaTransitionException;
 import com.booking.replication.schema.exception.TableMapException;
 
@@ -59,8 +57,6 @@ public class PipelineOrchestrator extends Thread {
     private static EventAugmenter     eventAugmenter;
     private static ActiveSchemaVersion activeSchemaVersion;
 
-    private static HBaseSchemaManager hBaseSchemaManager;
-
     public CurrentTransactionMetadata currentTransactionMetadata;
 
     private final ConcurrentHashMap<Integer, BinlogPositionInfo> binlogPositionLastKnownInfo;
@@ -82,8 +78,6 @@ public class PipelineOrchestrator extends Thread {
     private static final Meter eventsSkippedCounter     = Metrics.registry.meter(name("events", "eventsSkippedCounter"));
 
     private static final int BUFFER_FLUSH_INTERVAL = 30000; // <- force buffer flush every 30 sec
-
-    private static final int DEFAULT_VERSIONS_FOR_MIRRORED_TABLES = 1000;
 
     private HashMap<String,Boolean> rotateEventAllreadySeenForBinlogFile = new HashMap<>();
 
@@ -133,10 +127,6 @@ public class PipelineOrchestrator extends Thread {
         eventAugmenter = new EventAugmenter(activeSchemaVersion);
 
         currentTransactionMetadata = new CurrentTransactionMetadata();
-
-        if (configuration.getApplierType().equals("hbase")) {
-            hBaseSchemaManager = new HBaseSchemaManager(repcfg.getHBaseQuorum());
-        }
 
         this.applier = applier;
 
@@ -333,36 +323,7 @@ public class PipelineOrchestrator extends Thread {
                     String dbName = currentTransactionMetadata.getDBNameFromTableID(tableID);
                     LOGGER.debug("processing events for { db => " + dbName + " table => " + tableName + " } ");
                     LOGGER.debug("fakeMicrosecondCounter at tableMap event => " + fakeMicrosecondCounter);
-                    String hbaseTableName = configuration.getHbaseNamespace().toLowerCase()
-                            + ":"
-                            + tableName.toLowerCase();
-                    if (configuration.getApplierType().equals("hbase")) {
-                        if (! hBaseSchemaManager.isTableKnownToHBase(hbaseTableName)) {
-                            // This should not happen in tableMapEvent, unless we are
-                            // replaying the binlog.
-                            // TODO: load hbase tables on start-up so this never happens
-                            hBaseSchemaManager.createMirroredTableIfNotExists(hbaseTableName, DEFAULT_VERSIONS_FOR_MIRRORED_TABLES);
-                        }
-                        if (configuration.isWriteRecentChangesToDeltaTables()) {
-                            //String replicantSchema = ((TableMapEvent) event).getDatabaseName().toString();
-                            String mysqlTableName = ((TableMapEvent) event).getTableName().toString();
-
-                            if (configuration.getTablesForWhichToTrackDailyChanges().contains(mysqlTableName)) {
-
-                                long eventTimestampMicroSec = event.getHeader().getTimestamp();
-
-                                String deltaTableName = TableNameMapper.getCurrentDeltaTableName(
-                                        eventTimestampMicroSec,
-                                        configuration.getHbaseNamespace(),
-                                        mysqlTableName,
-                                        configuration.isInitialSnapshotMode());
-                                if (! hBaseSchemaManager.isTableKnownToHBase(deltaTableName)) {
-                                    boolean isInitialSnapshotMode = configuration.isInitialSnapshotMode();
-                                    hBaseSchemaManager.createDeltaTableIfNotExists(deltaTableName, isInitialSnapshotMode);
-                                }
-                            }
-                        }
-                    }
+                    applier.applyTableMapEvent((TableMapEvent) event);
                     updateLastKnownPositionForMapEvent((TableMapEvent) event, fakeMicrosecondCounter);
                 } catch (Exception e) {
                     LOGGER.error("Could not execute mapEvent block. Requesting replicator shutdown...", e);

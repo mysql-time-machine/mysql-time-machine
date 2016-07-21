@@ -145,12 +145,16 @@ public class Configuration {
     private String          startingBinlogFileName;
     private String          endingBinlogFileName;
 
+
+    private StartupParameters startupParameters;
+
     /**
      * Apply command line parameters to the configuration object.
      *
      * @param startupParameters     Startup parameters
      */
     public void loadStartupParameters(StartupParameters startupParameters ) {
+        this.startupParameters = startupParameters;
 
         applierType = startupParameters.getApplier();
 

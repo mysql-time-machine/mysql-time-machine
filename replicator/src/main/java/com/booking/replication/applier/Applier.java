@@ -7,28 +7,31 @@ import com.google.code.or.binlog.BinlogEventV4;
 import com.google.code.or.binlog.impl.event.FormatDescriptionEvent;
 import com.google.code.or.binlog.impl.event.QueryEvent;
 import com.google.code.or.binlog.impl.event.RotateEvent;
+import com.google.code.or.binlog.impl.event.TableMapEvent;
 import com.google.code.or.binlog.impl.event.XidEvent;
 
 /**
  * Created by bosko on 11/14/15.
  */
-public interface Applier {
+public abstract class Applier {
 
-    void applyAugmentedRowsEvent(AugmentedRowsEvent augmentedSingleRowEvent, PipelineOrchestrator caller);
+    public abstract void applyAugmentedRowsEvent(AugmentedRowsEvent augmentedSingleRowEvent, PipelineOrchestrator caller);
 
-    void applyCommitQueryEvent(QueryEvent event);
+    public void applyCommitQueryEvent(QueryEvent event) {}
 
-    void applyXidEvent(XidEvent event);
+    public void applyXidEvent(XidEvent event) {}
 
-    void applyRotateEvent(RotateEvent event);
+    public void applyRotateEvent(RotateEvent event) {}
 
-    void applyAugmentedSchemaChangeEvent(
+    public void applyTableMapEvent(TableMapEvent event) {}
+
+    public void applyAugmentedSchemaChangeEvent(
             AugmentedSchemaChangeEvent augmentedSchemaChangeEvent,
-            PipelineOrchestrator caller);
+            PipelineOrchestrator caller) {}
 
-    void forceFlush();
+    public abstract void forceFlush();
 
-    void applyFormatDescriptionEvent(FormatDescriptionEvent event);
+    public void applyFormatDescriptionEvent(FormatDescriptionEvent event) {}
 
-    void waitUntilAllRowsAreCommitted(BinlogEventV4 event);
+    public abstract void waitUntilAllRowsAreCommitted(BinlogEventV4 event);
 }

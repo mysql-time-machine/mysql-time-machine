@@ -7,11 +7,13 @@ import com.booking.replication.augmenter.AugmentedRowsEvent;
 import com.booking.replication.augmenter.AugmentedSchemaChangeEvent;
 import com.booking.replication.pipeline.PipelineOrchestrator;
 import com.booking.replication.schema.HBaseSchemaManager;
+import com.booking.replication.schema.TableNameMapper;
 
 import com.google.code.or.binlog.BinlogEventV4;
 import com.google.code.or.binlog.impl.event.FormatDescriptionEvent;
 import com.google.code.or.binlog.impl.event.QueryEvent;
 import com.google.code.or.binlog.impl.event.RotateEvent;
+import com.google.code.or.binlog.impl.event.TableMapEvent;
 import com.google.code.or.binlog.impl.event.XidEvent;
 
 import org.slf4j.Logger;
@@ -28,7 +30,7 @@ import org.slf4j.LoggerFactory;
  *         to 'my_schema:my_table'
  * </p>
  */
-public class HBaseApplier implements Applier {
+public class HBaseApplier extends Applier {
 
     // TODO: move configuration vars to Configuration
     private static final int POOL_SIZE = 30;
@@ -86,6 +88,43 @@ public class HBaseApplier implements Applier {
                 + " rows before moving to the next binlog file.");
         LOGGER.info("Stats snapshot: ");
         markAndSubmit(); // mark current as ready; flush all;
+    }
+
+    private static final int DEFAULT_VERSIONS_FOR_MIRRORED_TABLES = 1000;
+
+    @Override
+    public void applyTableMapEvent(TableMapEvent event) {
+        String tableName = event.getTableName().toString();
+
+        String hbaseTableName = configuration.getHbaseNamespace().toLowerCase()
+                + ":"
+                + tableName.toLowerCase();
+        if (! hbaseSchemaManager.isTableKnownToHBase(hbaseTableName)) {
+            // This should not happen in tableMapEvent, unless we are
+            // replaying the binlog.
+            // TODO: load hbase tables on start-up so this never happens
+            hbaseSchemaManager.createMirroredTableIfNotExists(hbaseTableName, DEFAULT_VERSIONS_FOR_MIRRORED_TABLES);
+        }
+        if (configuration.isWriteRecentChangesToDeltaTables()) {
+            //String replicantSchema = ((TableMapEvent) event).getDatabaseName().toString();
+            String mysqlTableName = ((TableMapEvent) event).getTableName().toString();
+
+            if (configuration.getTablesForWhichToTrackDailyChanges().contains(mysqlTableName)) {
+                long eventTimestampMicroSec = event.getHeader().getTimestamp();
+
+                String deltaTableName = TableNameMapper.getCurrentDeltaTableName(
+                        eventTimestampMicroSec,
+                        configuration.getHbaseNamespace(),
+                        mysqlTableName,
+                        configuration.isInitialSnapshotMode());
+                if (! hbaseSchemaManager.isTableKnownToHBase(deltaTableName)) {
+                    boolean isInitialSnapshotMode = configuration.isInitialSnapshotMode();
+                    hbaseSchemaManager.createDeltaTableIfNotExists(deltaTableName, isInitialSnapshotMode);
+                }
+            }
+        }
+
+
     }
 
     @Override

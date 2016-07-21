@@ -60,6 +60,7 @@ public class HBaseWriterTask implements Callable<HBaseTaskResult> {
 
     @Override
     public HBaseTaskResult call() throws Exception {
+        LOGGER.debug("Task started!");
         final Timer.Context taskTimer = taskLatencyTimer.time();
 
         ChaosMonkey chaosMonkey = new ChaosMonkey();
@@ -106,6 +107,7 @@ public class HBaseWriterTask implements Callable<HBaseTaskResult> {
                     }
 
                     for (String type: "mirrored delta".split(" ")) {
+                        LOGGER.debug("Writing to tables: " + type);
 
                         for (String hbaseTableName : preparedMutations.get(type).keySet()) {
 
@@ -119,7 +121,9 @@ public class HBaseWriterTask implements Callable<HBaseTaskResult> {
                             if (!DRY_RUN) {
                                 TableName tableName = TableName.valueOf(hbaseTableName);
                                 Table hbaseTable = hbaseConnection.getTable(tableName);
+                                LOGGER.debug("PUTTING to hbase table " + hbaseTableName + ": " + puts.size());
                                 hbaseTable.put(puts);
+                                LOGGER.debug("DONE");
                             }
 
                             if (type.equals("mirrored")) {
@@ -145,6 +149,8 @@ public class HBaseWriterTask implements Callable<HBaseTaskResult> {
         } // next transaction
 
         taskTimer.stop();
+
+        LOGGER.debug("Returning from task " + taskUuid);
 
         // task result
         return new HBaseTaskResult(

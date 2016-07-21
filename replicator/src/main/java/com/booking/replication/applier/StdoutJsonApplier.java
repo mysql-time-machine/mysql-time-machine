@@ -18,7 +18,7 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class StdoutJsonApplier implements Applier  {
+public class StdoutJsonApplier extends Applier  {
 
     private static long totalRowsCounter = 0;
 

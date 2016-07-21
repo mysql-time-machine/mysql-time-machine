@@ -13,6 +13,7 @@ import com.google.code.or.binlog.BinlogEventV4;
 import com.google.code.or.binlog.impl.event.FormatDescriptionEvent;
 import com.google.code.or.binlog.impl.event.QueryEvent;
 import com.google.code.or.binlog.impl.event.RotateEvent;
+import com.google.code.or.binlog.impl.event.TableMapEvent;
 import com.google.code.or.binlog.impl.event.XidEvent;
 
 import com.codahale.metrics.Counter;
@@ -38,7 +39,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Created by raynald on 08/06/16.
  */
 
-public class KafkaApplier implements Applier {
+public class KafkaApplier extends Applier {
     private static long totalRowsCounter = 0;
     private static long totalOutliersCounter = 0;
     private KafkaProducer<String, String> producer;
@@ -224,6 +225,11 @@ public class KafkaApplier implements Applier {
 
     @Override
     public void applyRotateEvent(RotateEvent event) {
+
+    }
+
+    @Override
+    public void applyTableMapEvent(TableMapEvent event) {
 
     }
 
