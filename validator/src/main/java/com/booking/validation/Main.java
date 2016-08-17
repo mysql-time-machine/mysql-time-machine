@@ -14,10 +14,14 @@ import java.util.*;
 
 public class Main {
     private static final Logger LOGGER = LoggerFactory.getLogger(Main.class);
-    static final String ANSI_RESET = "\u001B[0m";
-    static final String ANSI_GREEN = "\u001B[32m";
-    static final String ANSI_RED = "\u001B[31m";
-    static final int partitionLength = 1;
+    private static final String rowsPassTotal = "COLUMNS_PASS_TOTAL";
+    private static final String rowsFailTotal = "COLUMNS_FAIL_TOTAL";
+    private static final String columnsPassTotal = "IDS_PASS_TOTAL";
+    private static final String columnsFailTotal = "IDS_FAIL_TOTAL";
+    private static final String ANSI_RESET = "\u001B[0m";
+    private static final String ANSI_GREEN = "\u001B[32m";
+    private static final String ANSI_RED = "\u001B[31m";
+    private static final int partitionLength = 1;
 
     static class Config {
         String host;
@@ -33,7 +37,7 @@ public class Main {
         }
     }
 
-    public static void compareMySQLandHBase() {
+    public void compareMySQLandHBase() {
         String username = Configuration.getMySQLUsername();
         String password = Configuration.getPassword();
         String dbName = Configuration.getdbName();
@@ -54,10 +58,10 @@ public class Main {
                 ids.size(), dbConfig.table, ids.size() / partitionLength));
 
         HashMap<String, Integer> stats = new HashMap<>();
-        stats.put("COLUMNS_PASS_TOTAL", 0);
-        stats.put("COLUMNS_FAIL_TOTAL", 0);
-        stats.put("IDS_PASS_TOTAL", 0);
-        stats.put("IDS_FAIL_TOTAL", 0);
+        stats.put(rowsPassTotal, 0);
+        stats.put(rowsFailTotal, 0);
+        stats.put(columnsPassTotal, 0);
+        stats.put(columnsFailTotal, 0);
 
         // get_tests();
         for (int chunkNo = 0;chunkNo < ids.size(); chunkNo += partitionLength) {
@@ -66,7 +70,7 @@ public class Main {
             if (chunkNo == 0) {
                 System.out.println(new String(new char[80]).replace('\0', '-'));
                 System.out.println(String.format("%sPASS: { rows => %9d, columns => %9d }%s", ANSI_GREEN,
-                        stats.get("IDS_PASS_TOTAL"), stats.get(""), ANSI_RESET));
+                        stats.get(columnsPassTotal), stats.get(""), ANSI_RESET));
                 System.out.println(ANSI_RED + "FAIL: {}" + ANSI_RESET);
             }
             HashMap<String, List<String>> chunkHash = new HashMap<>();
@@ -84,7 +88,7 @@ public class Main {
         }
     }
 
-    public static void compareMySQLandKafka() {
+    private static void compareMySQLandKafka() {
         Validating validator = new Validating();
         String username = Configuration.getMySQLUsername();
         String password = Configuration.getPassword();
@@ -92,10 +96,10 @@ public class Main {
         Config dbConfig = Configuration.get_config(dbName);
         MySQLConnector dbhInfo = new MySQLConnector(username, password, dbConfig.host);
         HashMap<String, Integer> stats = new HashMap<>();
-        stats.put("COLUMNS_PASS_TOTAL", 0);
-        stats.put("COLUMNS_FAIL_TOTAL", 0);
-        stats.put("IDS_PASS_TOTAL", 0);
-        stats.put("IDS_FAIL_TOTAL", 0);
+        stats.put(rowsPassTotal, 0);
+        stats.put(rowsFailTotal, 0);
+        stats.put(columnsPassTotal, 0);
+        stats.put(columnsFailTotal, 0);
 
         KafkaConnector kafkaConnector = new KafkaConnector();
         for (int count = 1; count < 20; count ++ ) {
@@ -121,60 +125,69 @@ public class Main {
                 pks.put(key, idValue);
             }
             HashMap<String, HashMap<String, String>> mySQLRows = dbhInfo.getMySQLRows(dbName, tableName, pks);
-            for (String key: mySQLRows.keySet()) {
-                HashMap<String, String> mySQLRow = mySQLRows.get(key);
-                switch (type) {
-                    case "UPDATE": {
-                        for (Object columnKey : eventColumns.keySet()) {
-                            JSONObject kafkaValue = (JSONObject) eventColumns.get(columnKey);
-                            String valueType = kafkaValue.get("type").toString();
-                            String valueFromMySQL = mySQLRow.get(columnKey.toString());
-                            String valueFromKafka = kafkaValue.get("value_after").toString();
-                            Boolean res = validator.comparisonHelper(valueType, valueFromMySQL, valueFromKafka);
-                            if (!res) {
-                                System.out.println(String.format("id: %s, column: %s, value: %s != %s", key,
-                                        columnKey, valueFromMySQL, valueFromKafka));
-                            } else {
-                                System.out.println("Correct!");
+            if (type.equals("DELETE")) {
+                if (mySQLRows != null) {
+                    stats.put(rowsFailTotal, stats.get(rowsFailTotal) + 1);
+                } else {
+                    stats.put(rowsPassTotal, stats.get(rowsPassTotal) + 1);
+                }
+            } else {
+                for (String key : mySQLRows.keySet()) {
+                    HashMap<String, String> mySQLRow = mySQLRows.get(key);
+                    Boolean fail = false;
+                    switch (type) {
+                        case "UPDATE": {
+                            for (Object columnKey : eventColumns.keySet()) {
+                                JSONObject kafkaValue = (JSONObject) eventColumns.get(columnKey);
+                                String valueType = kafkaValue.get("type").toString();
+                                String valueFromMySQL = mySQLRow.get(columnKey.toString());
+                                String valueFromKafka = kafkaValue.get("value_after").toString();
+                                Boolean res = validator.comparisonHelper(valueType, valueFromMySQL, valueFromKafka);
+                                if (!res) {
+                                    fail = true;
+                                    stats.put(columnsFailTotal, stats.get(columnsFailTotal) + 1);
+                                    System.out.println(String.format("id: %s, column: %s, value: %s != %s", key,
+                                            columnKey, valueFromMySQL, valueFromKafka));
+                                } else {
+                                    stats.put(columnsPassTotal, stats.get(columnsPassTotal) + 1);
+                                }
                             }
+                            break;
                         }
-                        break;
-                    }
-                    case "INSERT": {
-                        for (Object columnKey : eventColumns.keySet()) {
-                            JSONObject kafkaValue = (JSONObject) eventColumns.get(columnKey);
-                            String valueType = kafkaValue.get("type").toString();
-                            String valueFromMySQL = mySQLRow.get(columnKey.toString());
-                            String valueFromKafka = kafkaValue.get("value").toString();
-                            Boolean res = validator.comparisonHelper(valueType, valueFromMySQL, valueFromKafka);
-                            if (!res) {
-                                System.out.println(String.format("id: %s, column: %s, value: %s != %s", key,
-                                        columnKey, valueFromMySQL, valueFromKafka));
-                            } else {
-                                System.out.println("Correct!");
+                        case "INSERT": {
+                            for (Object columnKey : eventColumns.keySet()) {
+                                JSONObject kafkaValue = (JSONObject) eventColumns.get(columnKey);
+                                String valueType = kafkaValue.get("type").toString();
+                                String valueFromMySQL = mySQLRow.get(columnKey.toString());
+                                String valueFromKafka = kafkaValue.get("value").toString();
+                                Boolean res = validator.comparisonHelper(valueType, valueFromMySQL, valueFromKafka);
+                                if (!res) {
+                                    fail = true;
+                                    stats.put(columnsFailTotal, stats.get(columnsFailTotal) + 1);
+                                    System.out.println(String.format("id: %s, column: %s, value: %s != %s", key,
+                                            columnKey, valueFromMySQL, valueFromKafka));
+                                } else {
+                                    stats.put(columnsPassTotal, stats.get(columnsPassTotal) + 1);
+                                }
                             }
+                            break;
                         }
-                        break;
+                        default:
+                            break;
                     }
-                    case "DELETE": {
-                        for (Object columnKey : eventColumns.keySet()) {
-                            JSONObject kafkaValue = (JSONObject) eventColumns.get(columnKey);
-                            String valueFromMySQL = mySQLRow.get(columnKey.toString());
-                            Boolean res = valueFromMySQL == null;
-                            if (!res) {
-                                System.out.println(String.format("id: %s, column: %s, value: %s != %s", key,
-                                        columnKey, valueFromMySQL));
-                            } else {
-                                System.out.println("Correct!");
-                            }
-                        }
-                        break;
+                    if (fail) {
+                        stats.put(rowsFailTotal, stats.get(rowsFailTotal) + 1);
+                    } else {
+                        stats.put(rowsPassTotal, stats.get(rowsPassTotal) + 1);
                     }
-                    default:
-                        break;
                 }
             }
         }
+        System.out.println(new String(new char[80]).replace('\0', '-'));
+        System.out.println(String.format("%sPASS: { rows => %9d, columns => %9d }%s", ANSI_GREEN,
+                stats.get(rowsPassTotal), stats.get(columnsPassTotal), ANSI_RESET));
+        System.out.println(String.format("%sFAIL: { rows => %9d, columns => %9d }%s", ANSI_RED,
+                stats.get(rowsFailTotal), stats.get(columnsFailTotal), ANSI_RESET));
     }
 
     public static void main(String[] args) throws Exception {
