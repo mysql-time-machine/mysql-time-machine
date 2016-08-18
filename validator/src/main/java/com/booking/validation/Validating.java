@@ -2,6 +2,11 @@ package com.booking.validation;
 
 import static java.lang.StrictMath.abs;
 
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
+import java.util.TimeZone;
+
 /**
  * Created by lezhong on 7/14/16.
  */
@@ -29,30 +34,20 @@ public class Validating {
 
     Boolean compareGeneral(String valueMySQL, String valueNonMySQL) {
         // Double, TinyInt, SmallInt, MediumInt, Int, BigInt, Decimal, Enum, Set,
-        System.out.println(String.format("Compare %s with %s", valueMySQL, valueNonMySQL));
         return (valueMySQL == null && valueNonMySQL.equals(("NULL"))) || valueMySQL.equals(valueNonMySQL);
     }
 
     Boolean compareFloat(String valueMySQL, String valueNonMySQL) {
-        System.out.println(valueMySQL + "==>" + valueNonMySQL);
-        // int nrDigits = valueMySQL.split(".")[1].length();
-        float floatMySQL = Float.parseFloat(valueMySQL);
-        if (valueNonMySQL.equals("NULL")) {
-            return false;
+        if (valueMySQL == null) {
+            return valueNonMySQL.equals("NULL");
+        } else {
+            if (valueNonMySQL.equals("NULL")) {
+                return false;
+            }
         }
+        float floatMySQL = Float.parseFloat(valueMySQL);
         float floatHBase = Float.parseFloat(valueNonMySQL);
-        //if (nrDigits > 0) {
-        //    floatHBase = Float.parseFloat(valueMySQL.split(".")[0] + valueMySQL.split(".")[1].substring(0, nrDigits));
-        //} else {
-        //    floatHBase = Float.parseFloat(valueNonMySQL);
-        //}
-
         return abs(floatHBase - floatMySQL) < smallValue;
-    }
-
-    Boolean compareChar(String valueMySQL, String valueNonMySQL) {
-        // TODO: encoding check
-        return valueMySQL.equals(valueNonMySQL);
     }
 
     Boolean compareText(String valueMySQL, String valueNonMySQL) {
@@ -63,36 +58,43 @@ public class Validating {
     }
 
     Boolean compareTimestamp(String valueMySQL, String valueNonMySQL) {
-        // TODO: timestamp comparator;
-        return true;
+        if (valueMySQL == null) {
+            return valueNonMySQL.equals("NULL");
+        } else {
+            if (valueNonMySQL.equals("NULL")) {
+                return false;
+            }
+        }
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTimeInMillis(Long.valueOf(valueNonMySQL));
+        DateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.S");
+        format.setTimeZone(TimeZone.getTimeZone("Europe/Amsterdam"));
+        String converted = format.format(calendar.getTime());
+        return valueMySQL.substring(0, valueMySQL.length() - 3).equals(converted.substring(0, converted.length() - 3));
+        // In case there is one second difference, we consider they are equal as well.
     }
 
     Boolean compareDate(String valueMySQL, String valueNonMySQL) {
-        // TODO: date comparator;
-        // DateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-        //try {
-        //    Date dateTime = format.parse(valueMySQL.substring(0, -2));
-        //    System.out.println("bijiao: " + dateTime);
-        //    return true; // timestampMySQL.equals(valueNonMySQL);
-        //} catch (ParseException pa) {
-        //    pa.printStackTrace();;
-        //}
-        return true;
+        if (valueMySQL == null) {
+            return valueNonMySQL.equals("NULL");
+        } else {
+            if (valueNonMySQL.equals("NULL")) {
+                return false;
+            }
+        }
+        return valueMySQL.equals(valueNonMySQL);
     }
 
     Boolean typeHelper(String type, String typename) {
-        if (type.length() >= typename.length() && type.substring(0, typename.length()).equals(typename)) {
-            return true;
-        }
-        return false;
+        return type.length() >= typename.length() && type.substring(0, typename.length()).equals(typename);
     }
 
     Boolean comparisonHelper(String type, String valueMySQL, String valueNonMySQL) {
         if (typeHelper(type, "tinyint") || typeHelper(type, "int") || typeHelper(type, "char")
-                || typeHelper(type, "varchar") || typeHelper(type, "double") || typeHelper(type, "bigint")) {
+                || typeHelper(type, "varchar") || typeHelper(type, "bigint")) {
             return compareGeneral(valueMySQL, valueNonMySQL);
         }
-        if (typeHelper(type, "float")) {
+        if (typeHelper(type, "float") || typeHelper(type, "double")) {
             return compareFloat(valueMySQL, valueNonMySQL);
         }
         if (typeHelper(type, "text")) {

@@ -22,7 +22,6 @@ import java.util.Stack;
  */
 
 public class KafkaConnector {
-    private String brokerAddress;
     private String topicName;
     private KafkaConsumer<String, String> consumer;
     private static final Logger LOGGER = LoggerFactory.getLogger(KafkaConnector.class);
@@ -80,16 +79,14 @@ public class KafkaConnector {
                 try {
                     JSONObject valObj = (JSONObject) parser.parse(messages);
                     JSONArray mesObj = (JSONArray) valObj.get("rows");
-                    for (int ind = 0;ind < mesObj.size(); ind ++) {
-                        JSONObject message = (JSONObject) mesObj.get(ind);
-                        messageStack.push(message);
+                    for (Object message: mesObj) {
+                        messageStack.push((JSONObject) message);
                     }
                 } catch (ParseException pa) {
                     pa.printStackTrace();
                 }
             }
-            JSONObject ans = messageStack.pop();
-            return ans;
+            return messageStack.pop();
         } catch (IOException io) {
             io.printStackTrace();
         }
@@ -97,6 +94,8 @@ public class KafkaConnector {
     }
 
     KafkaConnector() {
+        String brokerAddress;
+
         brokerAddress = Configuration.getKafkaBroker();
         topicName = Configuration.getKafkaTopicName();
         consumer = new KafkaConsumer<>(getConsumerProperties(brokerAddress));

@@ -22,6 +22,9 @@ public class Main {
     private static final String ANSI_GREEN = "\u001B[32m";
     private static final String ANSI_RED = "\u001B[31m";
     private static final int partitionLength = 1;
+    private static final String consUPDATE = "UPDATE";
+    private static final String consINSERT = "INSERT";
+    private static final String consDELETE = "DELETE";
 
     static class Config {
         String host;
@@ -114,10 +117,10 @@ public class Main {
                 List<String> idValue = new ArrayList<>();
                 JSONObject valueTuples = (JSONObject) eventColumns.get(key);
                 switch (type) {
-                    case "UPDATE": {
+                    case consUPDATE: {
                         idValue.add(valueTuples.get("value_after").toString());
                     } break;
-                    case "INSERT": case "DELETE": {
+                    case consINSERT: case consDELETE: {
                         idValue.add(valueTuples.get("value").toString());
                     } break;
                     default: break;
@@ -125,7 +128,7 @@ public class Main {
                 pks.put(key, idValue);
             }
             HashMap<String, HashMap<String, String>> mySQLRows = dbhInfo.getMySQLRows(dbName, tableName, pks);
-            if (type.equals("DELETE")) {
+            if (type.equals(consDELETE)) {
                 if (mySQLRows != null) {
                     stats.put(rowsFailTotal, stats.get(rowsFailTotal) + 1);
                 } else {
@@ -136,7 +139,7 @@ public class Main {
                     HashMap<String, String> mySQLRow = mySQLRows.get(key);
                     Boolean fail = false;
                     switch (type) {
-                        case "UPDATE": {
+                        case consUPDATE: {
                             for (Object columnKey : eventColumns.keySet()) {
                                 JSONObject kafkaValue = (JSONObject) eventColumns.get(columnKey);
                                 String valueType = kafkaValue.get("type").toString();
@@ -146,15 +149,15 @@ public class Main {
                                 if (!res) {
                                     fail = true;
                                     stats.put(columnsFailTotal, stats.get(columnsFailTotal) + 1);
-                                    System.out.println(String.format("id: %s, column: %s, value: %s != %s", key,
-                                            columnKey, valueFromMySQL, valueFromKafka));
+                                    System.out.println(String.format("type: %s, id: %s, column: %s, value: %s != %s",
+                                            valueType, key, columnKey, valueFromMySQL, valueFromKafka));
                                 } else {
                                     stats.put(columnsPassTotal, stats.get(columnsPassTotal) + 1);
                                 }
                             }
                             break;
                         }
-                        case "INSERT": {
+                        case consINSERT: {
                             for (Object columnKey : eventColumns.keySet()) {
                                 JSONObject kafkaValue = (JSONObject) eventColumns.get(columnKey);
                                 String valueType = kafkaValue.get("type").toString();
@@ -164,8 +167,8 @@ public class Main {
                                 if (!res) {
                                     fail = true;
                                     stats.put(columnsFailTotal, stats.get(columnsFailTotal) + 1);
-                                    System.out.println(String.format("id: %s, column: %s, value: %s != %s", key,
-                                            columnKey, valueFromMySQL, valueFromKafka));
+                                    System.out.println(String.format("type %s, id: %s, column: %s, value: %s != %s",
+                                            valueType, key, columnKey, valueFromMySQL, valueFromKafka));
                                 } else {
                                     stats.put(columnsPassTotal, stats.get(columnsPassTotal) + 1);
                                 }
@@ -176,6 +179,7 @@ public class Main {
                             break;
                     }
                     if (fail) {
+                        System.out.println(eventColumns);
                         stats.put(rowsFailTotal, stats.get(rowsFailTotal) + 1);
                     } else {
                         stats.put(rowsPassTotal, stats.get(rowsPassTotal) + 1);
