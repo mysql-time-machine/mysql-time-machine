@@ -12,8 +12,8 @@ import java.util.*;
  */
 
 
-public class Main {
-    private static final Logger LOGGER = LoggerFactory.getLogger(Main.class);
+public class Processing {
+    private static final Logger LOGGER = LoggerFactory.getLogger(Processing.class);
     private static final String rowsPassTotal = "COLUMNS_PASS_TOTAL";
     private static final String rowsFailTotal = "COLUMNS_FAIL_TOTAL";
     private static final String columnsPassTotal = "IDS_PASS_TOTAL";
@@ -105,7 +105,7 @@ public class Main {
         stats.put(columnsFailTotal, 0);
 
         KafkaConnector kafkaConnector = new KafkaConnector();
-        for (int count = 1; count < 20; count ++ ) {
+        for (int count = 0; count < Configuration.getTestingRound(); count ++ ) {
             JSONObject val = kafkaConnector.nextKeyValue();
             String type = val.get("eventType").toString();
             String tableName = val.get("tableName").toString();
@@ -179,7 +179,7 @@ public class Main {
                             break;
                     }
                     if (fail) {
-                        System.out.println(eventColumns);
+                        LOGGER.info(eventColumns.toJSONString());
                         stats.put(rowsFailTotal, stats.get(rowsFailTotal) + 1);
                     } else {
                         stats.put(rowsPassTotal, stats.get(rowsPassTotal) + 1);

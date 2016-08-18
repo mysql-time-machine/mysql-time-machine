@@ -89,7 +89,7 @@ public class Validating {
         return type.length() >= typename.length() && type.substring(0, typename.length()).equals(typename);
     }
 
-    Boolean comparisonHelper(String type, String valueMySQL, String valueNonMySQL) {
+    public Boolean comparisonHelper(String type, String valueMySQL, String valueNonMySQL) {
         if (typeHelper(type, "tinyint") || typeHelper(type, "int") || typeHelper(type, "char")
                 || typeHelper(type, "varchar") || typeHelper(type, "bigint")) {
             return compareGeneral(valueMySQL, valueNonMySQL);

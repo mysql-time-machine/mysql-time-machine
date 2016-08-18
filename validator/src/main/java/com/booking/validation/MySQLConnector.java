@@ -34,11 +34,8 @@ public class MySQLConnector {
             dataSource.setServerName(dbHost);
             dataSource.setZeroDateTimeBehavior("convertToNull");
             conn = dataSource.getConnection();
-
-            // STEP 4: Execute a query
             LOGGER.info("Creating statement...");
         } catch (Exception se) {
-            // Handle errors for JDBC
             se.printStackTrace();
         }
     }
@@ -46,8 +43,7 @@ public class MySQLConnector {
     static ResultSet executeSQL(String sql) {
         try {
             stmt = conn.createStatement();
-            ResultSet rst = stmt.executeQuery(sql);
-            return rst;
+            return stmt.executeQuery(sql);
         } catch (SQLException se) {
             se.printStackTrace();
         }
@@ -116,7 +112,7 @@ public class MySQLConnector {
     }
 
     public HashMap<String, HashMap<String, String>> getMySQLRows(String db, String table, HashMap<String, List<String>> ids) {
-        String sql = "";
+        String sql;
 
         selectDB(db);
         String whereClause = "";
@@ -132,7 +128,7 @@ public class MySQLConnector {
         try {
             ResultSet rs = executeSQL(sql);
             java.sql.ResultSetMetaData rsmd = rs.getMetaData();
-            List<String> columns = new ArrayList<String>(rsmd.getColumnCount());
+            List<String> columns = new ArrayList<>(rsmd.getColumnCount());
             for (int i = 1;i <= rsmd.getColumnCount();i ++) {
                 columns.add(rsmd.getColumnName(i));
             }
