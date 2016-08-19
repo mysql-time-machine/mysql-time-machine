@@ -9,7 +9,7 @@ import org.apache.hadoop.hbase.client._
 import org.apache.hadoop.hbase.util.Bytes
 import org.apache.spark.sql.{SaveMode, Row}
 import org.apache.spark.sql.hive.HiveContext
-import org.apache.spark.sql.types.StructType
+import org.apache.spark.sql.types.{StructType, StructField, StringType}
 import org.apache.spark.{SparkConf, SparkContext}
 import scala.collection.JavaConversions._
 
@@ -25,32 +25,33 @@ object HBaseSnapshotter {
     * Parses command line arguments into an Argument object
     * @param args command line arguments
     */
-  def parseArguments(args: Array[String]): Arguments ={
+  def parseArguments(args: Array[String]): Arguments = {
     val parser = new scopt.OptionParser[Arguments]("hbase-snapshotter") {
       note("Options:")
 
-      opt[Long]('t', "pit").
-        valueName("<TIMESTAMP>").
-        action( (pit_, c) => c.copy(pit = pit_) ).
-        text("Takes a snapshot of the latest HBase version available before the given timestamp (exclusive). " +
+      opt[Long]('t', "pit")
+        .valueName("<TIMESTAMP>")
+        .action( (pit_, c) => c.copy(pit = pit_) )
+        .text("Takes a snapshot of the latest HBase version available before the given timestamp (exclusive). " +
           "If this option is not specified, the latest timestamp will be used.")
 
-      help("help").text("Prints this usage text")
+      help("help")
+        .text("Prints this usage text")
 
       note("\nArguments:")
 
-      arg[String]("<config file>").
-        action( (configPath_, c) => c.copy(configPath = configPath_) ).
-        text("The path of a yaml config file.")
+      arg[String]("<config file>")
+        .action( (configPath_, c) => c.copy(configPath = configPath_) )
+        .text("The path of a yaml config file.")
 
-      arg[String]("<source table>").
-        action( (hbaseTableName_, c) => c.copy(hbaseTableName = hbaseTableName_) ).
-        text("The source HBase table you are copying from. " +
+      arg[String]("<source table>")
+        .action( (hbaseTableName_, c) => c.copy(hbaseTableName = hbaseTableName_) )
+        .text("The source HBase table you are copying from. " +
           "It should be in the format NAMESPACE:TABLENAME")
 
-      arg[String]("<dest table>").
-        action ( (hiveTableName_, c) => c.copy(hiveTableName = hiveTableName_) ).
-        text("The destination Hive table you are copying to. " +
+      arg[String]("<dest table>")
+        .action ( (hiveTableName_, c) => c.copy(hiveTableName = hiveTableName_) )
+        .text("The destination Hive table you are copying to. " +
           "It should be in the format DATABASE.TABLENAME")
     }
 
@@ -74,7 +75,7 @@ object HBaseSnapshotter {
       configParser.getDefaultNull
     }
     catch {
-      case e:Exception =>
+      case e: Exception =>
         throw IllegalFormatException(
           "The yaml config file is not formatted correctly." +
             "Check readme.md file for more information.",
@@ -92,11 +93,12 @@ object HBaseSnapshotter {
     println(s"SparkApp Id = ${sc.applicationId}")
 
     val hbaseConfig = HBaseConfiguration.create()
-    hbaseConfig.set("hbase.zookeeper.quorum", config.getZooKeeperQuorum())
+    val zookeeperQuorum: String = config.getZooKeeperQuorum()
+    hbaseConfig.set("hbase.zookeeper.quorum", zookeeperQuorum)
 
     val hbaseContext = new HBaseContext(sc, hbaseConfig)
     val hiveContext = new HiveContext(sc)
-    val schema:StructType = config.getSchema
+    val schema: StructType = config.getSchema
 
     val scan = new Scan()
     if(args.pit > -1 )
@@ -104,7 +106,7 @@ object HBaseSnapshotter {
 
     // Scans the given HBase table into an RDD.
     val hbaseRDD = hbaseContext.hbaseRDD(args.hbaseTableName, scan, {r: (ImmutableBytesWritable, Result) => r._2})
-    val defaultNull:String = config.getDefaultNull
+    val defaultNull: String = config.getDefaultNull
 
     // Mapping every row in HBase to a Row object in a Spark Dataframe
     // Note: familyMap has a custom comparator. The entries are sorted from newest to oldest.
@@ -115,7 +117,10 @@ object HBaseSnapshotter {
       val familyMap = hbaseRow.getMap
       transformMapToRow(rowKey, familyMap, schema, defaultNull)
     })
-    val dataFrame = hiveContext.createDataFrame(rowRDD, schema)
+    val hiveSchema = StructType(schema.fieldNames.map(columnName => {
+      StructField(columnName.split(':')(1), StringType, false)
+    }))
+    val dataFrame = hiveContext.createDataFrame(rowRDD, hiveSchema)
     dataFrame.write.mode(SaveMode.Overwrite).saveAsTable(args.hiveTableName)
   }
 
@@ -131,33 +136,21 @@ object HBaseSnapshotter {
     * @param defaultNull The value to be used in Hive table, if the cell value was missing from the source HBase table.
     * @return an object of type Row holding the row data.
     */
-  def transformMapToRow(rowKey: String,
+  def transformMapToRow(
+    rowKey: String,
     familyMap: FamilyMap,
-    schema:StructType, defaultNull: String   ) = {
+    schema: StructType,
+    defaultNull: String): Row = {
 
-    // An array that will hold the row values in the same order as the schema's fields.
-    val rowValues = new Array[String](schema.length)
-
-    schema.fieldNames.foreach(fieldName => {
-      val splitIndex = fieldName.indexOf('_')
-      if(splitIndex == -1)
-        throw IllegalFormatException(s"Missing '_' in the schema column '$fieldName'. Schema columns should be formatted as FamilyName_QualifierName", null)
-      val (familyName, qualifierName) = (fieldName.take(splitIndex), fieldName.drop(splitIndex+1))
-      val fieldIndex = schema.fieldIndex(fieldName)
-      if(fieldName == "k_hbase_key")
-        rowValues(fieldIndex) = rowKey
-      else
-        try{
-          val value = familyMap.get(Bytes.toBytes(familyName))
-            .get(Bytes.toBytes(qualifierName))
-            .firstEntry().getValue
-          rowValues(fieldIndex) = Bytes.toStringBinary(value)
-        }
-        catch{
-          case e:Exception => rowValues(fieldIndex) = defaultNull
-        }
+    Row.fromSeq(for(fieldName <- schema.fieldNames) yield {
+      try {
+        val Array(familyName, qualifierName) = fieldName.split(':')
+        Bytes.toStringBinary(familyMap
+          .get(Bytes.toBytes(familyName))
+          .get(Bytes.toBytes(qualifierName))
+          .firstEntry().getValue)
+      }
+      catch { case e: Exception => defaultNull }
     })
-    // Expanding the array values as arguments to the constructor of Row object
-    Row(rowValues:_*)
   }
 }
