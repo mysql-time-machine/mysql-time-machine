@@ -14,16 +14,18 @@ import org.apache.spark.{SparkConf, SparkContext}
 import scala.collection.JavaConversions._
 
 case class Arguments(pit: Long = -1, configPath: String = null, hbaseTableName: String = null, hiveTableName: String = null)
+
 case class IllegalFormatException(message: String, cause: Throwable) extends RuntimeException(message, cause)
+
 object HBaseSnapshotter {
-  var cmdArgs: Arguments = null
   //FamilyMap = Map[FamilyName, Map[ColumnName, Map[Timestamp, Value]]]
-  type FamilyMap = NavigableMap[Array[Byte],NavigableMap[Array[Byte], NavigableMap[java.lang.Long, Array[Byte]]]]
+  type FamilyMap = NavigableMap[Array[Byte], NavigableMap[Array[Byte], NavigableMap[java.lang.Long, Array[Byte]]]]
+
   /**
     * Parses command line arguments into an Argument object
     * @param args command line arguments
     */
-  def parseArguments(args: Array[String]): Unit ={
+  def parseArguments(args: Array[String]): Arguments ={
     val parser = new scopt.OptionParser[Arguments]("hbase-snapshotter") {
       note("Options:")
 
