@@ -56,46 +56,56 @@ object HBaseSnapshotter {
 
     parser.parse(args, Arguments()) match {
       case Some(config) => {
-        if (config.configPath == null) {
-          println("Error: Missing option --config <CONFIG-PATH>")
-          println("Try --help for more information.")
-          System.exit(1)
-        }
-        cmdArgs = config
+        config
       }
-      case None =>{
-        // arguments are bad, error message will have been displayed
+      case None => {
         System.exit(1)
+        return(Arguments())
       }
     }
   }
-  def validateConfigFile(configParser: ConfigParser):Unit = {
-    try{
+
+  def parseConfig(configPath: String): ConfigParser = {
+    val configParser = new ConfigParser(configPath)
+
+    try {
       configParser.getZooKeeperQuorum
       configParser.getSchema
       configParser.getDefaultNull
-    }catch{
-      case e:Exception =>
-        throw IllegalFormatException("The yaml config file is not formatted correctly. Check readme.md file for more information.", e)
     }
+    catch {
+      case e:Exception =>
+        throw IllegalFormatException(
+          "The yaml config file is not formatted correctly." +
+            "Check readme.md file for more information.",
+          e
+        )
+    }
+    configParser
   }
-  def main(args: Array[String]): Unit ={
-    parseArguments(args)
-    val configParser = new ConfigParser(cmdArgs.configPath)
-    validateConfigFile(configParser)
+
+  def main(cmdArgs: Array[String]): Unit ={
+    val args = parseArguments(cmdArgs)
+    val config = parseConfig(args.configPath)
+
     val sc = new SparkContext( new SparkConf().setAppName("HBaseSnapshotter") )
     println(s"SparkApp Id = ${sc.applicationId}")
+
     val hbaseConfig = HBaseConfiguration.create()
-    hbaseConfig.set("hbase.zookeeper.quorum", configParser.getZooKeeperQuorum())
+    hbaseConfig.set("hbase.zookeeper.quorum", config.getZooKeeperQuorum())
+
     val hbaseContext = new HBaseContext(sc, hbaseConfig)
     val hiveContext = new HiveContext(sc)
-    val schema:StructType = configParser.getSchema
+    val schema:StructType = config.getSchema
+
     val scan = new Scan()
-    if(cmdArgs.pit > -1 )
-      scan.setTimeRange(0, cmdArgs.pit)
+    if(args.pit > -1 )
+      scan.setTimeRange(0, args.pit)
+
     // Scans the given HBase table into an RDD.
-    val hbaseRDD = hbaseContext.hbaseRDD(cmdArgs.hbaseTableName, scan, {r: (ImmutableBytesWritable, Result) => r._2})
-    val defaultNull:String = configParser.getDefaultNull
+    val hbaseRDD = hbaseContext.hbaseRDD(args.hbaseTableName, scan, {r: (ImmutableBytesWritable, Result) => r._2})
+    val defaultNull:String = config.getDefaultNull
+
     // Mapping every row in HBase to a Row object in a Spark Dataframe
     // Note: familyMap has a custom comparator. The entries are sorted from newest to oldest.
     // map.firstEntry() is the newest entry (with largest timestamp). This is different than the default behaviour
@@ -106,8 +116,9 @@ object HBaseSnapshotter {
       transformMapToRow(rowKey, familyMap, schema, defaultNull)
     })
     val dataFrame = hiveContext.createDataFrame(rowRDD, schema)
-    dataFrame.write.mode(SaveMode.Overwrite).saveAsTable(cmdArgs.hiveTableName)
+    dataFrame.write.mode(SaveMode.Overwrite).saveAsTable(args.hiveTableName)
   }
+
   /**
     * Transforms the data in a hashmap into a Row object.
     * The data of the current HBase row is stored in a hash map. To store them into Hive,
@@ -121,8 +132,9 @@ object HBaseSnapshotter {
     * @return an object of type Row holding the row data.
     */
   def transformMapToRow(rowKey: String,
-                        familyMap: FamilyMap,
-                        schema:StructType, defaultNull: String   ) = {
+    familyMap: FamilyMap,
+    schema:StructType, defaultNull: String   ) = {
+
     // An array that will hold the row values in the same order as the schema's fields.
     val rowValues = new Array[String](schema.length)
 
@@ -149,4 +161,3 @@ object HBaseSnapshotter {
     Row(rowValues:_*)
   }
 }
-
