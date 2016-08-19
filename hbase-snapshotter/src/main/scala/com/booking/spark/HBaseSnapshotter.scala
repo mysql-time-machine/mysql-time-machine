@@ -26,22 +26,32 @@ object HBaseSnapshotter {
   def parseArguments(args: Array[String]): Unit ={
     val parser = new scopt.OptionParser[Arguments]("hbase-snapshotter") {
       note("Options:")
-      opt[Long]("pit") valueName("<TIMESTAMP>") action { (pit_, c) =>
-        c.copy(pit = pit_) } text("Takes a snapshot of the latest HBase version available before the given timestamp (exclusive). " +
-        "If this option is not specified, the latest timestamp will be used.")
 
-      opt[String]("config") valueName("<CONFIG-PATH>") action { (configPath_, c) =>
-        c.copy(configPath = configPath_) } text("The path of a yaml config file.")
+      opt[Long]('t', "pit").
+        valueName("<TIMESTAMP>").
+        action( (pit_, c) => c.copy(pit = pit_) ).
+        text("Takes a snapshot of the latest HBase version available before the given timestamp (exclusive). " +
+          "If this option is not specified, the latest timestamp will be used.")
 
-      help("help") text("Prints this usage text")
+      help("help").text("Prints this usage text")
+
       note("\nArguments:")
-      arg[String]("<source table>")  action { (hbaseTableName_, c) =>
-        c.copy(hbaseTableName = hbaseTableName_) } text("The source HBase table you are copying from. " +
-        "It should be in the format NAMESPACE:TABLENAME")
-      arg[String]("<dest table>")  action { (hiveTableName_, c) =>
-        c.copy(hiveTableName = hiveTableName_) } text("The destination Hive table you are copying to. " +
-        "It should be in the format DATABASE.TABLENAME")
+
+      arg[String]("<config file>").
+        action( (configPath_, c) => c.copy(configPath = configPath_) ).
+        text("The path of a yaml config file.")
+
+      arg[String]("<source table>").
+        action( (hbaseTableName_, c) => c.copy(hbaseTableName = hbaseTableName_) ).
+        text("The source HBase table you are copying from. " +
+          "It should be in the format NAMESPACE:TABLENAME")
+
+      arg[String]("<dest table>").
+        action ( (hiveTableName_, c) => c.copy(hiveTableName = hiveTableName_) ).
+        text("The destination Hive table you are copying to. " +
+          "It should be in the format DATABASE.TABLENAME")
     }
+
     parser.parse(args, Arguments()) match {
       case Some(config) => {
         if (config.configPath == null) {
