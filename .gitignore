@@ -11,3 +11,4 @@ target/
 *.ear
 hs_err_pid*
 dependency-reduced-pom.xml
+.DS_STORE
