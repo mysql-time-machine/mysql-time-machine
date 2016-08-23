@@ -7,20 +7,20 @@ import org.yaml.snakeyaml.Yaml
 import scala.collection.JavaConverters._
 
 /**
-  * Simple utility class for loading configuration from yml file
-  * This is the structure of the config file:
-
-  hbase:
-  zookeeper_quorum:  ['hbase-zk1-host', 'hbase-zkN-host']
-  schema: ['family1:qualifier1', 'familyN:qualifierN']
-  hive:
-  default_null: "DEFAULT NULL VALUE"
-  */
-class ConfigParser(configPath:String){
+ * Simple utility class for loading configuration from yml file
+ * This is the structure of the config file:
+ *
+ * hbase:
+ * zookeeper_quorum:  ['hbase-zk1-host', 'hbase-zkN-host']
+ * schema: ['family1:qualifier1', 'familyN:qualifierN']
+ * hive:
+ * default_null: "DEFAULT NULL VALUE"
+ */
+class ConfigParser(configPath: String) {
   val yaml = new Yaml()
   val in = Files.newInputStream(Paths.get(configPath))
-  val config = yaml.load(in).asInstanceOf[util.Map[String, util.Map[String,Object]]]
-  def getZooKeeperQuorum():String = {
+  val config = yaml.load(in).asInstanceOf[util.Map[String, util.Map[String, Object]]]
+  def getZooKeeperQuorum(): String = {
     return config.get("hbase")
       .get("zookeeper_quorum")
       .asInstanceOf[util.ArrayList[String]]
@@ -28,7 +28,7 @@ class ConfigParser(configPath:String){
   }
 
   def getSchema: StructType = {
-    val columnList =  config.get("hbase")
+    val columnList = config.get("hbase")
       .get("schema")
       .asInstanceOf[util.ArrayList[String]]
       .asScala
@@ -41,7 +41,7 @@ class ConfigParser(configPath:String){
   def getDefaultNull: String = {
     config.get("hive")
       .asScala
-      .getOrElse("default_null","NULL")
+      .getOrElse("default_null", "NULL")
       .asInstanceOf[String]
   }
 }
