@@ -15,6 +15,7 @@ libraryDependencies ++= Seq(
 
   "org.apache.spark" %% "spark-core" % "1.6.0" % "provided",
   "org.apache.spark" %% "spark-hive" % "1.6.0" % "provided",
+  "org.apache.spark" %% "spark-yarn" % "1.6.0" % "provided",
   "com.cloudera" % "spark-hbase" % "0.0.2-clabs" excludeAll(
     ExclusionRule("org.mortbay.jetty")
   )
