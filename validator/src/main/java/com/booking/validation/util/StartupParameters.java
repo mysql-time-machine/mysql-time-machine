@@ -10,7 +10,8 @@ import org.slf4j.LoggerFactory;
 
 public class StartupParameters {
 
-    private String  configPath;
+    private String hbaseConfigPath;
+    private String kafkaConfigPath;
     private String  schema;
     private String  hbaseNamespace;
 
@@ -26,22 +27,28 @@ public class StartupParameters {
         }
 
         // config-path
-        configPath = (String) optionSet.valueOf("config-path");
+        hbaseConfigPath = (String) optionSet.valueOf("hbase-config-path");
+        kafkaConfigPath = (String) optionSet.valueOf("kafka-config-path");
 
         // setup hbase namespace
         hbaseNamespace = (String) optionSet.valueOf("hbase-namespace");
 
         System.out.println("----------------------------------------------");
         System.out.println("Parsed params:           ");
-        System.out.println("\tconfig-path:           " + configPath);
+        System.out.println("\thbase-config-path:           " + hbaseConfigPath);
+        System.out.println("\tkafka-config-path:           " + kafkaConfigPath);
         System.out.println("\tschema:                " + schema);
         System.out.println("\thbase-namespace:       " + hbaseNamespace);
         System.out.println("----------------------------------------------\n");
 
     }
 
-    public String getConfigPath() {
-        return configPath;
+    public String getHBaseConfigPath() {
+        return hbaseConfigPath;
+    }
+
+    public String getKafkaConfigPath() {
+        return kafkaConfigPath;
     }
 
     public String getSchema() {
