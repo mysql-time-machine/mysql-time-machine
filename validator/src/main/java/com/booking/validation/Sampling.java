@@ -21,20 +21,19 @@ import java.util.ArrayList;
  * Created by lezhong on 7/14/16.
  */
 
-
-
 public class Sampling {
-    public static class MySQLGenerator {
+    ConfigurationHBase configurationHBase = new ConfigurationHBase();
+
+    public class MySQLGenerator {
         //  Database credentials
-        static final String USER = com.booking.validation.Configuration.getMySQLUsername();
-        static final String PASS = com.booking.validation.Configuration.getPassword();
-        private static String sql;
-        private static ResultSet rs;
-        private static ArrayList<String> tableList = new ArrayList<>();
+        final String user = configurationHBase.getMySQLUsername();
+        final String pass = configurationHBase.getPassword();
+        private String sql;
+        private ResultSet rs;
+        private ArrayList<String> tableList = new ArrayList<>();
         Connection conn = null;
         Statement stmt = null;
         MysqlDataSource dataSource;
-        private static final Logger LOGGER = LoggerFactory.getLogger(MySQLGenerator.class);
 
         MySQLGenerator() {
             try {
@@ -42,17 +41,15 @@ public class Sampling {
                 Class.forName("com.mysql.jdbc.Driver");
 
                 // STEP 3: Open a connection
-                LOGGER.info("Connecting to database...");
                 dataSource = new MysqlDataSource();
-                dataSource.setUser(USER);
-                dataSource.setPassword(PASS);
-                dataSource.setServerName(com.booking.validation.Configuration.getMySQLServer());
+                dataSource.setUser(user);
+                dataSource.setPassword(pass);
+                dataSource.setServerName(configurationHBase.getMySQLServer());
                 conn = dataSource.getConnection();
 
                 // STEP 4: Execute a query
-                LOGGER.info("Creating statement...");
                 stmt = conn.createStatement();
-                sql = String.format("use %s;", com.booking.validation.Configuration.getdbName());
+                sql = String.format("use %s;", configurationHBase.getdbName());
                 stmt.executeQuery(sql);
                 stmt.close();
             } catch (SQLException se) {
@@ -89,14 +86,13 @@ public class Sampling {
     }
 
 
-    public static class HBaseGenerator {
+    public class HBaseGenerator {
         private Configuration config;
         private HTable table;
-        private static final Logger LOGGER = LoggerFactory.getLogger(MySQLGenerator.class);
 
         HBaseGenerator() {
             config = HBaseConfiguration.create();
-            config.set("hbase.zookeeper.quorum", com.booking.validation.Configuration.getHBaseZKQuorum());
+            config.set("hbase.zookeeper.quorum", configurationHBase.getHBaseZKQuorum());
         }
 
         void setTable(String tableName) throws IOException {

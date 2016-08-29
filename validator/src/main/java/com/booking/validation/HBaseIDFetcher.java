@@ -1,7 +1,5 @@
 package com.booking.validation;
 
-import static com.booking.validation.Configuration.getHBaseZKQuorum;
-
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.Connection;
@@ -23,6 +21,8 @@ import java.io.IOException;
  */
 
 public class HBaseIDFetcher {
+    static ConfigurationHBase configurationHBase = new ConfigurationHBase();
+
     static String extractPrimaryIds(String val, String tableName) {
         String ans = "";
         JSONParser parser = new JSONParser();
@@ -51,7 +51,7 @@ public class HBaseIDFetcher {
         String val;
 
         org.apache.hadoop.conf.Configuration config = HBaseConfiguration.create();
-        config.set("hbase.zookeeper.quorum", getHBaseZKQuorum());
+        config.set("hbase.zookeeper.quorum", configurationHBase.getHBaseZKQuorum());
         try {
             Connection connection = ConnectionFactory.createConnection(config);
             Table table = connection.getTable(TableName.valueOf(schemaName));

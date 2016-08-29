@@ -22,6 +22,7 @@ import java.util.Stack;
  */
 
 public class KafkaConnector {
+    private ConfigurationKafka config = new ConfigurationKafka();
     private String topicName;
     private KafkaConsumer<String, String> consumer;
     private static final Logger LOGGER = LoggerFactory.getLogger(KafkaConnector.class);
@@ -96,8 +97,9 @@ public class KafkaConnector {
     KafkaConnector() {
         String brokerAddress;
 
-        brokerAddress = Configuration.getKafkaBroker();
-        topicName = Configuration.getKafkaTopicName();
+        brokerAddress = config.getKafkaBroker();
+        System.out.println("------------------" + brokerAddress);
+        topicName = config.getKafkaTopicName();
         consumer = new KafkaConsumer<>(getConsumerProperties(brokerAddress));
     }
 }

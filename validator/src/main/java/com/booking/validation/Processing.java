@@ -33,6 +33,8 @@ public class Processing {
     private static final String consUPDATE = "UPDATE";
     private static final String consINSERT = "INSERT";
     private static final String consDELETE = "DELETE";
+    private ConfigurationKafka configurationKafka;
+    private ConfigurationHBase configurationHBase;
 
     static class Config {
         String host;
@@ -49,10 +51,10 @@ public class Processing {
     }
 
     public void compareMySQLandHBase() {
-        String username = Configuration.getMySQLUsername();
-        String password = Configuration.getPassword();
-        String dbName = Configuration.getdbName();
-        Config dbConfig = Configuration.get_config(dbName);
+        String username = configurationHBase.getMySQLUsername();
+        String password = configurationHBase.getPassword();
+        String dbName = configurationHBase.getdbName();
+        Config dbConfig = configurationHBase.get_config(dbName);
         String dataSource = String.format("dbi:mysql:%s;host=%s", dbName, dbConfig.host);
         String dataSourceInfo = String.format("dbi:mysql:information_schema;host=%s", dbConfig.host);
 
@@ -99,12 +101,12 @@ public class Processing {
         }
     }
 
-    private static void compareMySQLandKafka() {
+    public void compareMySQLandKafka() {
         Validating validator = new Validating();
-        String username = Configuration.getMySQLUsername();
-        String password = Configuration.getPassword();
-        String dbName = Configuration.getdbName();
-        Config dbConfig = Configuration.get_config(dbName);
+        String username = configurationKafka.getMySQLUsername();
+        String password = configurationKafka.getPassword();
+        String dbName = configurationKafka.getdbName();
+        Config dbConfig = configurationKafka.get_config(dbName);
         MySQLConnector dbhInfo = new MySQLConnector(username, password, dbConfig.host);
         HashMap<String, Integer> stats = new HashMap<>();
         stats.put(rowsPassTotal, 0);
@@ -113,7 +115,7 @@ public class Processing {
         stats.put(columnsFailTotal, 0);
 
         KafkaConnector kafkaConnector = new KafkaConnector();
-        for (int count = 0; count < Configuration.getTestingRound(); count ++ ) {
+        for (int count = 0; count < configurationKafka.getTestingRound(); count ++ ) {
             JSONObject val = kafkaConnector.nextKeyValue();
             String type = val.get("eventType").toString();
             String tableName = val.get("tableName").toString();
@@ -201,42 +203,4 @@ public class Processing {
         System.out.println(String.format("%sFAIL: { rows => %9d, columns => %9d }%s", ANSI_RED,
                 stats.get(rowsFailTotal), stats.get(columnsFailTotal), ANSI_RESET));
     }
-
-    public static void main(String[] args) throws Exception {
-        OptionSet optionSet = Cmd.parseArgs(args);
-        StartupParameters startupParameters = new StartupParameters(optionSet);
-
-        ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
-        String hbaseConfigPath = startupParameters.getHBaseConfigPath();
-        String kafkaConfigPath = startupParameters.getKafkaConfigPath();
-        final Configuration confHbase;
-        final Configuration confKafka;
-
-        try {
-            InputStream inHBase = Files.newInputStream(Paths.get(hbaseConfigPath));
-            InputStream inKafka = Files.newInputStream(Paths.get(kafkaConfigPath));
-            confHbase = mapper.readValue(inHBase, Configuration.class);
-            confKafka = mapper.readValue(inKafka, Configuration.class);
-
-            if (confHbase == null || confKafka == null) {
-                throw new RuntimeException(String.format("Unable to load configuration from file: %s", hbaseConfigPath));
-            }
-            confHbase.loadStartupParameters(startupParameters);
-            confKafka.loadStartupParameters(startupParameters);
-            confHbase.validate();
-            confKafka.validate();
-
-            try {
-                System.out.println("loaded hbase configuration: \n" + confHbase.toString());
-                System.out.println("loaded kafka configuration: \n" + confKafka.toString());
-            } catch (Exception exp) {
-                exp.printStackTrace();
-            }
-        } catch (Exception exp) {
-            exp.printStackTrace();
-        }
-
-        // compareMySQLandHBase();
-        compareMySQLandKafka();
-    } // end main
 }

@@ -23,6 +23,7 @@ public class MySQLConnector {
     static Connection conn;
     static Statement stmt;
     static String id;
+    ConfigurationHBase configurationHBase = new ConfigurationHBase();
 
     MySQLConnector(String user, String pass, String dbHost) {
         try {
@@ -94,16 +95,16 @@ public class MySQLConnector {
     }
 
     public ArrayList<String> getIds(String db, String table) {
-        id = Configuration.getTableID(db, table);
+        id = configurationHBase.getTableID(db, table);
         String sql;
         selectDB(db);
-        sql = Configuration.getTableSQL(db, id, table);
+        sql = configurationHBase.getTableSQL(db, id, table);
         System.out.println(sql);
         ResultSet rst = executeSQL(sql);
         ArrayList<String> result = new ArrayList<>();
         try {
             while (rst.next()) {
-                result.add(Configuration.processID(rst, db));
+                result.add(configurationHBase.processID(rst, db));
             }
         } catch (SQLException se) {
             se.printStackTrace();

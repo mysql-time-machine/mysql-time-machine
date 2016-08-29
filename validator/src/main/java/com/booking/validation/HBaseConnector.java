@@ -20,10 +20,11 @@ public class HBaseConnector {
     private Configuration config;
     private HTable table;
     private static final Logger LOGGER = LoggerFactory.getLogger(HBaseConnector.class);
+    private ConfigurationHBase configurationHBase = new ConfigurationHBase();
 
     HBaseConnector() {
         config = HBaseConfiguration.create();
-        config.set("hbase.zookeeper.quorum", com.booking.validation.Configuration.getHBaseZKQuorum());
+        config.set("hbase.zookeeper.quorum", configurationHBase.getHBaseZKQuorum());
     }
 
     void fetchID() {
