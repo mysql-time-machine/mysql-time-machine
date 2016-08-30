@@ -32,12 +32,12 @@ public class Validating {
             row key, column family, column qualifier, timestamp, value
     */
 
-    Boolean compareGeneral(String valueMySQL, String valueNonMySQL) {
+    private Boolean compareGeneral(String valueMySQL, String valueNonMySQL) {
         // Double, TinyInt, SmallInt, MediumInt, Int, BigInt, Decimal, Enum, Set,
         return (valueMySQL == null && valueNonMySQL.equals(("NULL"))) || valueMySQL.equals(valueNonMySQL);
     }
 
-    Boolean compareFloat(String valueMySQL, String valueNonMySQL) {
+    private Boolean compareFloat(String valueMySQL, String valueNonMySQL) {
         if (valueMySQL == null) {
             return valueNonMySQL.equals("NULL");
         } else {
@@ -50,14 +50,14 @@ public class Validating {
         return abs(floatHBase - floatMySQL) < smallValue;
     }
 
-    Boolean compareText(String valueMySQL, String valueNonMySQL) {
+    private Boolean compareText(String valueMySQL, String valueNonMySQL) {
         if (valueMySQL == null) {
             return valueNonMySQL.equals("NULL");
         }
         return valueMySQL.equals(valueNonMySQL);
     }
 
-    Boolean compareTimestamp(String valueMySQL, String valueNonMySQL) {
+    private Boolean compareTimestamp(String valueMySQL, String valueNonMySQL) {
         if (valueMySQL == null) {
             return valueNonMySQL.equals("NULL");
         } else {
@@ -74,7 +74,7 @@ public class Validating {
         // In case there is one second difference, we consider they are equal as well.
     }
 
-    Boolean compareDate(String valueMySQL, String valueNonMySQL) {
+    private Boolean compareDate(String valueMySQL, String valueNonMySQL) {
         if (valueMySQL == null) {
             return valueNonMySQL.equals("NULL");
         } else {
@@ -85,7 +85,7 @@ public class Validating {
         return valueMySQL.equals(valueNonMySQL);
     }
 
-    Boolean typeHelper(String type, String typename) {
+    private Boolean typeHelper(String type, String typename) {
         return type.length() >= typename.length() && type.substring(0, typename.length()).equals(typename);
     }
 

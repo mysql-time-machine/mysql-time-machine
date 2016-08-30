@@ -99,7 +99,6 @@ public class KafkaConnector {
 
         config = confKafka;
         brokerAddress = config.getKafkaBroker();
-        System.out.println("------------------" + brokerAddress);
         topicName = config.getKafkaTopicName();
         consumer = new KafkaConsumer<>(getConsumerProperties(brokerAddress));
     }
