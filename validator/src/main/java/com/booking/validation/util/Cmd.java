@@ -18,6 +18,8 @@ public class Cmd {
         parser.accepts("schema").withRequiredArg().ofType(String.class);
         parser.accepts("hbase-config-path").withRequiredArg().ofType(String.class);
         parser.accepts("kafka-config-path").withRequiredArg().ofType(String.class);
+        parser.accepts("table").withRequiredArg().ofType(String.class);
+        parser.accepts("hbaseTable").withRequiredArg().ofType(String.class);
 
         return parser.parse(args);
     }

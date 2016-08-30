@@ -6,24 +6,17 @@ import com.booking.validation.util.StartupParameters;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import joptsimple.OptionSet;
-import org.json.simple.JSONArray;
-import org.json.simple.JSONObject;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
 
 /**
  * Created by lezhong on 7/14/16.
  */
 
 public class Main {
-    private static Processing processing = new Processing();
+    private static Comparator comparator;
 
     public static void main(String[] args) throws Exception {
         OptionSet optionSet = Cmd.parseArgs(args);
@@ -48,18 +41,11 @@ public class Main {
             confKafka.loadStartupParameters(startupParameters);
             confHbase.validate();
             confKafka.validate();
-
-            try {
-                System.out.println("loaded hbase configuration: \n" + confHbase.toString());
-                System.out.println("loaded kafka configuration: \n" + confKafka.toString());
-            } catch (Exception exp) {
-                exp.printStackTrace();
-            }
+            comparator = new Comparator(confKafka, confHbase);
+            // comparator.compareMySQLandKafka();
+            comparator.compareMySQLandHBase();
         } catch (Exception exp) {
             exp.printStackTrace();
         }
-
-        // compareMySQLandHBase();
-        processing.compareMySQLandKafka();
     } // end main
 }

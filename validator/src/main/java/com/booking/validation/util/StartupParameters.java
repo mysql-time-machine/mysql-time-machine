@@ -12,8 +12,10 @@ public class StartupParameters {
 
     private String hbaseConfigPath;
     private String kafkaConfigPath;
-    private String  schema;
-    private String  hbaseNamespace;
+    private String schema;
+    private String hbaseNamespace;
+    private String table;
+    private String hbaseTable;
 
     private static final org.slf4j.Logger LOGGER = LoggerFactory.getLogger(StartupParameters.class);
 
@@ -33,12 +35,17 @@ public class StartupParameters {
         // setup hbase namespace
         hbaseNamespace = (String) optionSet.valueOf("hbase-namespace");
 
+        table = (String) optionSet.valueOf("table");
+        hbaseTable = (String) optionSet.valueOf("hbaseTable");
+
         System.out.println("----------------------------------------------");
         System.out.println("Parsed params:           ");
         System.out.println("\thbase-config-path:           " + hbaseConfigPath);
         System.out.println("\tkafka-config-path:           " + kafkaConfigPath);
         System.out.println("\tschema:                " + schema);
         System.out.println("\thbase-namespace:       " + hbaseNamespace);
+        System.out.println("\ttable:       " + table);
+        System.out.println("\thbaseTable:       " + hbaseTable);
         System.out.println("----------------------------------------------\n");
 
     }
@@ -57,5 +64,13 @@ public class StartupParameters {
 
     public String getHbaseNamespace() {
         return hbaseNamespace;
+    }
+
+    public String getTable() {
+        return table;
+    }
+
+    public String getHbaseTable() {
+        return hbaseTable;
     }
 }

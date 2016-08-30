@@ -22,7 +22,7 @@ import java.util.Stack;
  */
 
 public class KafkaConnector {
-    private ConfigurationKafka config = new ConfigurationKafka();
+    private ConfigurationKafka config;
     private String topicName;
     private KafkaConsumer<String, String> consumer;
     private static final Logger LOGGER = LoggerFactory.getLogger(KafkaConnector.class);
@@ -94,9 +94,10 @@ public class KafkaConnector {
         return new JSONObject();
     }
 
-    KafkaConnector() {
+    KafkaConnector(ConfigurationKafka confKafka) {
         String brokerAddress;
 
+        config = confKafka;
         brokerAddress = config.getKafkaBroker();
         System.out.println("------------------" + brokerAddress);
         topicName = config.getKafkaTopicName();

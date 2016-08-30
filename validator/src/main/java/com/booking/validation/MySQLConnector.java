@@ -76,6 +76,7 @@ public class MySQLConnector {
         try {
             while (rst.next()) {
                 ColumnTypes col = new ColumnTypes();
+                // TODO: add ORDINAL_POSITION and COLUMN_KEY
                 col.dataType = rst.getString("DATA_TYPE");
                 col.columnType = rst.getString("COLUMN_TYPE");
                 col.charSet = rst.getString("CHARACTER_SET_NAME");
