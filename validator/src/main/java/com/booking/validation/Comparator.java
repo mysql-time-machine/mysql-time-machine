@@ -32,20 +32,6 @@ public class Comparator {
         configurationHBase = configHBase;
     }
 
-    static class Config {
-        String host;
-        String table;
-        String hbaseTable;
-        HashMap<String, Boolean> tests;
-
-        Config() {
-            host = "";
-            table = "";
-            hbaseTable = "";
-            tests = new HashMap<>();
-        }
-    }
-
     public void compareMySQLandHBase() {
         String username = configurationHBase.getMySQLUsername();
         String password = configurationHBase.getPassword();

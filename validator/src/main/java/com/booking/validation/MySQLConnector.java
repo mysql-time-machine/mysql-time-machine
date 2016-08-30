@@ -99,13 +99,13 @@ public class MySQLConnector {
         id = configurationHBase.getTableID(db, table);
         String sql;
         selectDB(db);
-        sql = configurationHBase.getTableSQL(db, id, table);
+        sql = configurationHBase.getTableSQL(id, table);
         System.out.println(sql);
         ResultSet rst = executeSQL(sql);
         ArrayList<String> result = new ArrayList<>();
         try {
             while (rst.next()) {
-                result.add(configurationHBase.processID(rst, db));
+                result.add(configurationHBase.processID(id, rst));
             }
         } catch (SQLException se) {
             se.printStackTrace();
