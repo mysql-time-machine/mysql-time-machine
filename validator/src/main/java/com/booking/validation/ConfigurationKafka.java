@@ -3,6 +3,8 @@ package com.booking.validation;
 import com.booking.validation.util.Duration;
 import com.booking.validation.util.StartupParameters;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import org.apache.htrace.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import org.apache.htrace.fasterxml.jackson.annotation.JsonProperty;
 import org.apache.htrace.fasterxml.jackson.databind.annotation.JsonDeserialize;
 
@@ -34,6 +36,7 @@ public class ConfigurationKafka {
         public String broker;
         public String topic;
         public List<String> tables;
+        public List<String> excludetables;
     }
 
     @JsonDeserialize
@@ -99,9 +102,6 @@ public class ConfigurationKafka {
         }
         if (kafka.broker == null) {
             throw new RuntimeException("Kafka broker address cannot be null.");
-        }
-        if (kafka.tables == null) {
-            throw new RuntimeException("Kafka tables cannot be null.");
         }
         if (kafka.topic == null) {
             throw new RuntimeException("Kafka topic cannot be null.");

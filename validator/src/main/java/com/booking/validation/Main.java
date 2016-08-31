@@ -42,8 +42,8 @@ public class Main {
             confHbase.validate();
             confKafka.validate();
             comparator = new Comparator(confKafka, confHbase);
-            // comparator.compareMySQLandKafka();
-            comparator.compareMySQLandHBase();
+            comparator.compareMySQLandKafka();
+            // comparator.compareMySQLandHBase();
         } catch (Exception exp) {
             exp.printStackTrace();
         }

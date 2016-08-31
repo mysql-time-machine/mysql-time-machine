@@ -101,8 +101,7 @@ public class ConfigurationHBase {
     }
 
     public String getTableSQL(String id, String table) {
-        String sql = String.format("SELECT %s FROM %s LIMIT 1000", id, table);
-        return sql;
+        return String.format("SELECT %s FROM %s LIMIT 1000", id, table);
     }
 
     public String processID(String id, ResultSet rst) {

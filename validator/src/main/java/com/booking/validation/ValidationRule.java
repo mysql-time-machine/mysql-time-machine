@@ -13,7 +13,7 @@ import java.util.TimeZone;
 
 
 public class ValidationRule {
-    final double smallValue = 0.0001;
+    private final double smallValue = 0.0001;
     /*
         MySQL type list:
             char,

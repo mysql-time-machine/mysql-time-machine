@@ -24,16 +24,21 @@ public class HBaseIDFetcher {
     private static ConfigurationHBase configurationHBase = new ConfigurationHBase();
 
     static String extractPrimaryIds(String val, String tableName) {
+        // Constant collections
+        final String cSChema = "columnsSchema";
+        final String cKEY = "columnKey";
+        final String pRI = "PRI";
+
         String ans = "";
         JSONParser parser = new JSONParser();
         try {
             JSONObject valObj = (JSONObject) parser.parse(val);
             JSONObject schema = (JSONObject) valObj.get(tableName);
-            JSONObject columnsSchema = (JSONObject) schema.get("columnsSchema");
+            JSONObject columnsSchema = (JSONObject) schema.get(cSChema);
             for (Object key : columnsSchema.keySet()) {
                 JSONObject value = (JSONObject) columnsSchema.get(key);
-                String str = value.get("columnKey").toString();
-                if (str.equals("PRI")) {
+                String str = value.get(cKEY).toString();
+                if (str.equals(pRI)) {
                     if (ans.length() == 0) {
                         ans = key.toString();
                     } else {
@@ -48,6 +53,9 @@ public class HBaseIDFetcher {
     }
 
     static String getTablePrimaryID(String schemaName, String tableName) {
+        // Constant collection
+        final String sPostChange = "schemaPostChange";
+
         String val;
 
         org.apache.hadoop.conf.Configuration config = HBaseConfiguration.create();
@@ -56,11 +64,11 @@ public class HBaseIDFetcher {
             Connection connection = ConnectionFactory.createConnection(config);
             Table table = connection.getTable(TableName.valueOf(schemaName));
             Scan scan = new Scan();
-            scan.addColumn(Bytes.toBytes("d"), Bytes.toBytes("schemaPostChange"));
+            scan.addColumn(Bytes.toBytes("d"), Bytes.toBytes(sPostChange));
             ResultScanner scanner = table.getScanner(scan);
             try {
                 Result re = scanner.next();
-                val = new String(re.getValue(Bytes.toBytes("d"), Bytes.toBytes("schemaPostChange")));
+                val = new String(re.getValue(Bytes.toBytes("d"), Bytes.toBytes(sPostChange)));
                 return extractPrimaryIds(val, tableName);
             } catch (Exception ex) {
                 ex.printStackTrace();;

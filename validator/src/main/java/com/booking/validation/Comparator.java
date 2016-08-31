@@ -80,6 +80,15 @@ public class Comparator {
     }
 
     public void compareMySQLandKafka() {
+        // Constant collections
+        final String eType = "eventType";
+        final String tName = "tableName";
+        final String pKeyColumns = "primaryKeyColumns";
+        final String eColumns = "eventColumns";
+        final String vAFter = "value_after";
+        final String vALUe = "value";
+        final String tYPE = "type";
+
         ValidationRule validator = new ValidationRule();
         String username = configurationKafka.getMySQLUsername();
         String password = configurationKafka.getPassword();
@@ -94,10 +103,10 @@ public class Comparator {
         KafkaConnector kafkaConnector = new KafkaConnector(configurationKafka);
         for (int count = 0; count < configurationKafka.getTestingRound(); count ++ ) {
             JSONObject val = kafkaConnector.nextKeyValue();
-            String type = val.get("eventType").toString();
-            String tableName = val.get("tableName").toString();
-            JSONArray pkSet = (JSONArray) val.get("primaryKeyColumns");
-            JSONObject eventColumns = (JSONObject) val.get("eventColumns");
+            String type = val.get(eType).toString();
+            String tableName = val.get(tName).toString();
+            JSONArray pkSet = (JSONArray) val.get(pKeyColumns);
+            JSONObject eventColumns = (JSONObject) val.get(eColumns);
             HashMap<String, List<String>> pks = new HashMap<>();
             for (int ind = 0;ind < pkSet.size(); ind ++) {
                 String key = pkSet.get(ind).toString();
@@ -105,10 +114,10 @@ public class Comparator {
                 JSONObject valueTuples = (JSONObject) eventColumns.get(key);
                 switch (type) {
                     case consUPDATE: {
-                        idValue.add(valueTuples.get("value_after").toString());
+                        idValue.add(valueTuples.get(vAFter).toString());
                     } break;
                     case consINSERT: case consDELETE: {
-                        idValue.add(valueTuples.get("value").toString());
+                        idValue.add(valueTuples.get(vALUe).toString());
                     } break;
                     default: break;
                 }
@@ -116,7 +125,8 @@ public class Comparator {
             }
             HashMap<String, HashMap<String, String>> mySQLRows = dbhInfo.getMySQLRows(dbName, tableName, pks);
             if (type.equals(consDELETE)) {
-                if (mySQLRows != null) {
+                if (mySQLRows.size() > 0) {
+                    System.out.println("These rows shouldn't exist: " + pks.toString());
                     stats.put(rowsFailTotal, stats.get(rowsFailTotal) + 1);
                 } else {
                     stats.put(rowsPassTotal, stats.get(rowsPassTotal) + 1);
@@ -129,9 +139,9 @@ public class Comparator {
                         case consUPDATE: {
                             for (Object columnKey : eventColumns.keySet()) {
                                 JSONObject kafkaValue = (JSONObject) eventColumns.get(columnKey);
-                                String valueType = kafkaValue.get("type").toString();
+                                String valueType = kafkaValue.get(tYPE).toString();
                                 String valueFromMySQL = mySQLRow.get(columnKey.toString());
-                                String valueFromKafka = kafkaValue.get("value_after").toString();
+                                String valueFromKafka = kafkaValue.get(vAFter).toString();
                                 Boolean res = validator.comparisonHelper(valueType, valueFromMySQL, valueFromKafka);
                                 if (!res) {
                                     fail = true;
@@ -147,9 +157,9 @@ public class Comparator {
                         case consINSERT: {
                             for (Object columnKey : eventColumns.keySet()) {
                                 JSONObject kafkaValue = (JSONObject) eventColumns.get(columnKey);
-                                String valueType = kafkaValue.get("type").toString();
+                                String valueType = kafkaValue.get(tYPE).toString();
                                 String valueFromMySQL = mySQLRow.get(columnKey.toString());
-                                String valueFromKafka = kafkaValue.get("value").toString();
+                                String valueFromKafka = kafkaValue.get(vALUe).toString();
                                 Boolean res = validator.comparisonHelper(valueType, valueFromMySQL, valueFromKafka);
                                 if (!res) {
                                     fail = true;
@@ -174,6 +184,7 @@ public class Comparator {
                 }
             }
         }
+        // Show the result to the screen
         System.out.println(new String(new char[80]).replace('\0', '-'));
         System.out.println(String.format("%sPASS: { rows => %9d, columns => %9d }%s", ANSI_GREEN,
                 stats.get(rowsPassTotal), stats.get(columnsPassTotal), ANSI_RESET));
