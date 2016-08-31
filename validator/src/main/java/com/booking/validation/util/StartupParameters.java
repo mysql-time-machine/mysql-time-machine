@@ -15,6 +15,7 @@ public class StartupParameters {
     private String hbaseNamespace;
     private String table;
     private String hbaseTable;
+    private int testRound;
 
     private static final org.slf4j.Logger LOGGER = LoggerFactory.getLogger(StartupParameters.class);
 
@@ -36,6 +37,7 @@ public class StartupParameters {
 
         table = (String) optionSet.valueOf("table");
         hbaseTable = (String) optionSet.valueOf("hbaseTable");
+        testRound = (Integer) optionSet.valueOf("testRound");
 
         System.out.println("----------------------------------------------");
         System.out.println("Parsed params:           ");
@@ -45,6 +47,7 @@ public class StartupParameters {
         System.out.println("\thbase-namespace:       " + hbaseNamespace);
         System.out.println("\ttable:       " + table);
         System.out.println("\thbaseTable:       " + hbaseTable);
+        System.out.println("\ttestRound:        " + testRound);
         System.out.println("----------------------------------------------\n");
 
     }
@@ -71,5 +74,9 @@ public class StartupParameters {
 
     public String getHbaseTable() {
         return hbaseTable;
+    }
+
+    public int getTestRound() {
+        return testRound;
     }
 }

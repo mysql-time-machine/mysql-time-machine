@@ -55,10 +55,6 @@ public class ConfigurationKafka {
         }
     }
 
-    public int getTestingRound() {
-        return 100;
-    }
-
     public String getKafkaBroker() {
         return kafka.broker;
     }
@@ -83,7 +79,14 @@ public class ConfigurationKafka {
         return replication_schema.host;
     }
 
-    public void loadStartupParameters(StartupParameters startupParameters ) {
+    private StartupParameters startupParameters;
+
+    public void loadStartupParameters(StartupParameters startParam) {
+        startupParameters = startParam;
+    }
+
+    public int getTestingRound() {
+        return startupParameters.getTestRound();
     }
 
     /**

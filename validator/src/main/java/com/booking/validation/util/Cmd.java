@@ -20,6 +20,7 @@ public class Cmd {
         parser.accepts("kafka-config-path").withRequiredArg().ofType(String.class);
         parser.accepts("table").withRequiredArg().ofType(String.class);
         parser.accepts("hbaseTable").withRequiredArg().ofType(String.class);
+        parser.accepts("testRound").withRequiredArg().ofType(Integer.class);
 
         return parser.parse(args);
     }
