@@ -20,9 +20,9 @@ import java.util.List;
 
 public class MySQLConnector {
     private static final Logger LOGGER = LoggerFactory.getLogger(MySQLConnector.class);
-    static Connection conn;
-    static Statement stmt;
-    static String id;
+    private static Connection conn;
+    private static Statement stmt;
+    private static String id;
     ConfigurationHBase configurationHBase = new ConfigurationHBase();
 
     MySQLConnector(String user, String pass, String dbHost) {

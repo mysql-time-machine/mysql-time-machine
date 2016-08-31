@@ -21,7 +21,7 @@ import java.io.IOException;
  */
 
 public class HBaseIDFetcher {
-    static ConfigurationHBase configurationHBase = new ConfigurationHBase();
+    private static ConfigurationHBase configurationHBase = new ConfigurationHBase();
 
     static String extractPrimaryIds(String val, String tableName) {
         String ans = "";

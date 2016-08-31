@@ -80,7 +80,7 @@ public class Comparator {
     }
 
     public void compareMySQLandKafka() {
-        Validating validator = new Validating();
+        ValidationRule validator = new ValidationRule();
         String username = configurationKafka.getMySQLUsername();
         String password = configurationKafka.getPassword();
         String dbName = configurationKafka.getdbName();

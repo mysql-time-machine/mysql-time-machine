@@ -119,7 +119,7 @@ public class ConfigurationHBase {
         return "";
     }
 
-    StartupParameters startupParameters;
+    private StartupParameters startupParameters;
 
     public void loadStartupParameters(StartupParameters startParam) {
         startupParameters = startParam;

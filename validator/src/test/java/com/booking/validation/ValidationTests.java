@@ -1,6 +1,5 @@
 package com.booking.validation;
 
-import com.booking.validation.Validating;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
@@ -13,7 +12,7 @@ public class ValidationTests {
 
     @Test
     public void multiplicationOfZeroIntegersShouldReturnZero() {
-        Validating validator = new Validating(); // Validation is tested
+        ValidationRule validator = new ValidationRule(); // Validation is tested
 
         // assert statements
         assertEquals(true, validator.comparisonHelper("char", "abc", "abc"));
