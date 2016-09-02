@@ -4,6 +4,8 @@ import java.util.NavigableMap
 
 import scala.collection.JavaConversions._
 
+// TODO: replace with scala.util.parsing.json.JSON
+import com.google.gson.{JsonParser,JsonObject};
 import com.cloudera.spark.hbase.HBaseContext
 import org.apache.hadoop.hbase.HBaseConfiguration
 import org.apache.hadoop.hbase.client._
@@ -15,7 +17,7 @@ import org.apache.spark.SparkContext._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{Row, SaveMode}
 import org.apache.spark.sql.hive.HiveContext
-import org.apache.spark.sql.types.{StringType, StructField, StructType}
+import org.apache.spark.sql.types._
 
 case class Arguments(timestamp: Long = -1, configPath: String = null, hbaseTableName: String = null, hiveTableName: String = null)
 
@@ -95,6 +97,7 @@ object HBaseSnapshotter {
   def init(args: Arguments, config: ConfigParser): Unit = {
     val conf = new SparkConf()
     conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+    conf.set("spark.kryoserializer.buffer", "64k")
     conf.registerKryoClasses(Array(classOf[org.apache.hadoop.hbase.client.Result]))
     val sc = new SparkContext(conf.setAppName("HBaseSnapshotter"))
     val hbaseConfig = HBaseConfiguration.create()
@@ -106,24 +109,43 @@ object HBaseSnapshotter {
     if (args.timestamp > -1) scan.setTimeRange(0, args.timestamp)
   }
 
+  def getSchema(tableName: String): StructType = {
+    val filters = new FilterList(
+      FilterList.Operator.MUST_PASS_ALL,
+      new FirstKeyOnlyFilter()// ,
+      // new KeyOnlyFilter()
+    )
+    val schemaScan = new Scan()
+
+    schemaScan.addColumn(Bytes.toBytes("d"), Bytes.toBytes("schemaPostChange"))
+    schemaScan.setFilter(filters)
+    val rdd = hbc.hbaseRDD("schema_history:dw", schemaScan, { r: (ImmutableBytesWritable, Result) => r._2 })
+
+    def transformSchema(table: String, r: Result): Seq[StructField] = {
+      val k = Bytes.toString(r.getRow())
+      val v = Bytes.toString(r.getFamilyMap(Bytes.toBytes("d")).get(Bytes.toBytes("schemaPostChange")))
+      val o = new JsonParser().parse(v).getAsJsonObject().getAsJsonObject(table)
+      o.getAsJsonObject("columnIndexToNameMap").entrySet().toSeq.map({ x => {
+        val columnIndex: Int = x.getKey().toInt
+        val columnName: String = x.getValue().getAsString()
+        val columnType: String = o.getAsJsonObject("columnsSchema")
+          .getAsJsonObject(columnName)
+          .getAsJsonPrimitive("columnType")
+          .getAsString()
+        (columnIndex, columnName, columnType)
+      }}).sortBy(_._1).map({ x => StructField(x._2, DataTypeParser.parse(x._3), true) })
+    }
+
+    StructType(transformSchema(tableName, rdd.first()))
+  }
+
   def main(cmdArgs: Array[String]): Unit = {
     val args = parseArguments(cmdArgs)
     val config = parseConfig(args.configPath)
 
     init(args, config)
 
-    val filters = new FilterList(
-      FilterList.Operator.MUST_PASS_ALL,
-      new FirstKeyOnlyFilter(),
-      new KeyOnlyFilter()
-    )
-    val scan = new Scan()
-    scan.addColumn(Bytes.toBytes("d"), Bytes.toBytes("schemaPostChange"))
-    scan.setFilter(filters)
-    val rdd = hbc.hbaseRDD("schema_history:dw", scan, { r: (ImmutableBytesWritable, Result) => r._2 })
-
-    rdd.sortBy({ x => Bytes.toLong(x.getRow) }, false).take(1).foreach(println)
-    System.exit(0)
+    val schema: StructType = getSchema("Reservation")
 
     // Scans the given HBase table into an RDD.
     val hbaseRDD = hbc.hbaseRDD(args.hbaseTableName, scan, { r: (ImmutableBytesWritable, Result) => r._2 })
@@ -132,7 +154,6 @@ object HBaseSnapshotter {
     // Note: familyMap has a custom comparator. The entries are sorted from newest to oldest.
     // map.firstEntry() is the newest entry (with largest timestamp). This is different than the default behaviour
     // of firstEntry() and lastEntry().
-    val schema = config.getSchema
     val defaultNull = config.getDefaultNull
 
     val rowRDD = hbaseRDD.map(hbaseRow => {
@@ -140,11 +161,7 @@ object HBaseSnapshotter {
       transformMapToRow(familyMap, schema, defaultNull)
     })
 
-    val hiveSchema = StructType(schema.fieldNames.map(columnName => {
-      StructField(columnName.split(':')(1), StringType, false)
-    }))
-
-    val dataFrame = hc.createDataFrame(rowRDD, hiveSchema)
+    val dataFrame = hc.createDataFrame(rowRDD, schema)
     dataFrame.write.mode(SaveMode.Overwrite).saveAsTable(args.hiveTableName)
   }
 
@@ -165,14 +182,23 @@ object HBaseSnapshotter {
     defaultNull: String
   ): Row = {
 
-    Row.fromSeq(for (fieldName <- schema.fieldNames) yield {
+    Row.fromSeq(for (field: StructField <- schema.fields) yield {
       try {
-        val Array(familyName, qualifierName) = fieldName.split(':')
-        Bytes.toStringBinary(familyMap
-          .get(Bytes.toBytes(familyName))
-          .get(Bytes.toBytes(qualifierName))
+        val fieldValue: String = Bytes.toStringBinary(familyMap
+          .get(Bytes.toBytes("d"))
+          .get(Bytes.toBytes(field.name))
           .firstEntry().getValue)
-      } catch { case e: Exception => defaultNull }
+
+        field.dataType match {
+          case IntegerType => fieldValue.toInt
+          case LongType => fieldValue.toLong
+          case DoubleType => fieldValue.toDouble
+          case _ => fieldValue
+        }
+      }
+      catch {
+        case e: Exception => null
+      }
     })
   }
 }

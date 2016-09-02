@@ -3,6 +3,8 @@ package com.booking.spark
 import java.nio.file.{Paths, Files}
 import java.util
 import org.apache.spark.sql.types.{StringType, StructField, StructType}
+
+// TODO: replace with scala.util.parsing.yaml
 import org.yaml.snakeyaml.Yaml
 import scala.collection.JavaConverters._
 
