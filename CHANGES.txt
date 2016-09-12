@@ -26,7 +26,6 @@ Release 0.11.0  Date/Time: 2016-09-12
       the same name as the hbase namespace that contains the tables
       from corresponding mysql schema.
     - added logging to binlog-flusher (Raynald Chung)
-    - Requeue canceled futures. More relaxed time out policy.
 
     [BUG FIXES]
     - Fix for NullPointer exception when hbase key is not present
@@ -42,7 +41,8 @@ Release 0.11.0  Date/Time: 2016-09-12
       the replication delay time series. The workaround is
       not to calculate the replication delay at rotate event.
     - Fix for a deadlock during shutdown hook execution.
-
+    - Requeue canceled futures.
+    
     [REMOVED]
     - Replicator will now exit with error if the producer stops running, instead of
       trying to restart the producer. This is in line with the decission to rely
