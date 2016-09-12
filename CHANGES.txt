@@ -1,5 +1,54 @@
 Revision history for MySQL-Time-Machine
 
+Release 0.11.0  Date/Time: 2016-09-12
+
+    [NEW FEATURES]
+    - Database recovery for binlog-flusher (Raynald Chung):
+        - Added storing of table name mappings in local file for recovery purposes.
+        - Added db-recovery script.
+    
+    [ENHANCEMENTS]
+    - Kafka Applier performance improvement: now sending multiple rows
+      per one Kafka message.
+    - binlog-flusher robustness (Raynald Chung):
+        - Any failed operation should be retried
+        - Added the clean-up method, where all the connections to MySQL
+          will be terminated so that MySQL won't keep anything running
+          after the killing of the script.
+    - Added support for pseudo GTID tracking and storing at safe checkpoints.
+   
+
+    [MINOR ENHANCEMENTS]
+    - Added option to specify table filter regex in the config for Kafka
+      Applier (Raynald Chung)
+    - Added dryrun mode startup option. 
+    - More consistency: schema history table name in hbase should have
+      the same name as the hbase namespace that contains the tables
+      from corresponding mysql schema.
+    - added logging to binlog-flusher (Raynald Chung)
+    - Requeue canceled futures. More relaxed time out policy.
+
+    [BUG FIXES]
+    - Fix for NullPointer exception when hbase key is not present
+      in the config file
+    - Bug fix for hbase namespace configuration: used to override
+      hbase namespace read from config file with a null, if namespace
+      was not specified in startup parameters.
+    - Force UTC timezone when computing the suffix for daily tables (Philippe Bruhat)
+    - Bug fix for noninitialized Kafka message key
+    - Fix for NPE in loadActiveSchema method 
+    - Workaround for a bug in open replicator which results in
+      rotate event having timestamp value = 0. This messes up
+      the replication delay time series. The workaround is
+      not to calculate the replication delay at rotate event.
+    - Fix for a deadlock during shutdown hook execution.
+
+    [REMOVED]
+    - Replicator will now exit with error if the producer stops running, instead of
+      trying to restart the producer. This is in line with the decission to rely
+      on marathon to restart the failed docker apps and to run replicator in 
+      docker container.
+
 Release 0.10.0  Date/Time: 2016-07-18
 
     [NEW FEATURES]
