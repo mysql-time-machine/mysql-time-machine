@@ -64,6 +64,7 @@ public class HBaseWriterTask implements Callable<HBaseTaskResult> {
 
     @Override
     public HBaseTaskResult call() throws Exception {
+
         final Timer.Context taskTimer = taskLatencyTimer.time();
 
         ChaosMonkey chaosMonkey = new ChaosMonkey();
@@ -126,6 +127,7 @@ public class HBaseWriterTask implements Callable<HBaseTaskResult> {
                                 hbaseTable.put(puts);
                             } else {
                                 System.out.println("Running in dry-run mode, prepared " + puts.size() + " mutations.");
+                                Thread.sleep(1000);
                             }
 
                             if (type.equals("mirrored")) {
@@ -151,6 +153,15 @@ public class HBaseWriterTask implements Callable<HBaseTaskResult> {
         } // next transaction
 
         taskTimer.stop();
+
+        if (DRY_RUN) {
+            Thread.sleep(100);
+            return new HBaseTaskResult(
+                    taskUuid,
+                    TaskStatus.WRITE_SUCCEEDED,
+                    true
+            );
+        }
 
         // task result
         return new HBaseTaskResult(

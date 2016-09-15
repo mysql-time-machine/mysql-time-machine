@@ -18,14 +18,89 @@ import org.slf4j.LoggerFactory;
  */
 public class PipelinePosition {
 
-    private com.booking.replication.pipeline.BinlogPositionInfo lastSafeCheckPointPosition;
-    private com.booking.replication.pipeline.BinlogPositionInfo startPosition;
-    private com.booking.replication.pipeline.BinlogPositionInfo currentPosition;
-    private com.booking.replication.pipeline.BinlogPositionInfo lastMapEventPosition;
+    private BinlogPositionInfo lastSafeCheckPointPosition;
+    private BinlogPositionInfo startPosition;
+    private BinlogPositionInfo currentPosition;
+    private BinlogPositionInfo lastMapEventPosition;
 
     private String currentPseudoGTID;
+    private String currentPseudoGTIDFullQuery;
+
+    private String currentReplicantHostName;
+    private int    currentReplicantServerID;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(PipelinePosition.class);
+
+    public PipelinePosition(
+        String mySQLHost,
+        int    serverID,
+        String startingBinlogFilename,
+        Long   startingBinlogPosition,
+        String lastVerifiedBinlogFilename,
+        Long   lastVerifiedBinlogPosition
+    ) {
+        initPipelinePosition(
+            mySQLHost,
+            serverID,
+            startingBinlogFilename,
+            startingBinlogPosition,
+            lastVerifiedBinlogFilename,
+            lastVerifiedBinlogPosition
+        );
+    }
+
+    public PipelinePosition(
+        String currentPseudoGTID,
+        String currentPseudoGTIDFullQuery,
+        String mySQLHost,
+        int    serverID,
+        String startingBinlogFilename,
+        Long   startingBinlogPosition,
+        String lastVerifiedBinlogFilename,
+        Long   lastVerifiedBinlogPosition
+    ) {
+        initPipelinePosition(
+            mySQLHost,
+            serverID,
+            startingBinlogFilename,
+            startingBinlogPosition,
+            lastVerifiedBinlogFilename,
+            lastVerifiedBinlogPosition
+        );
+        this.currentPseudoGTID          = currentPseudoGTID;
+        this.currentPseudoGTIDFullQuery = currentPseudoGTIDFullQuery;
+    }
+
+    private void initPipelinePosition(
+            String mySQLHost,
+            int    serverID,
+            String startingBinlogFilename,
+            Long   startingBinlogPosition,
+            String lastVerifiedBinlogFileName,
+            Long   lastVerifiedBinlogPosition
+    ) {
+        this.currentReplicantHostName   = mySQLHost;
+        this.currentReplicantServerID   = serverID;
+
+        BinlogPositionInfo startingBinlogPositionInfo;
+        startingBinlogPositionInfo = new BinlogPositionInfo(
+            mySQLHost,
+            serverID,
+            startingBinlogFilename,
+            startingBinlogPosition
+        );
+
+        BinlogPositionInfo lastVerifiedBinlogPositionInfo;
+        lastVerifiedBinlogPositionInfo = new BinlogPositionInfo(
+            mySQLHost,
+            serverID,
+            lastVerifiedBinlogFileName,
+            lastVerifiedBinlogPosition
+        );
+        this.setStartPosition(startingBinlogPositionInfo);
+        this.setCurrentPosition(startingBinlogPositionInfo); // <- on startup currentPosition := startingPosition
+        this.setLastSafeCheckPointPosition(lastVerifiedBinlogPositionInfo);
+    }
 
     public String getCurrentPseudoGTID() {
         return currentPseudoGTID;
@@ -33,6 +108,14 @@ public class PipelinePosition {
 
     public void setCurrentPseudoGTID(String currentPseudoGTID) {
         this.currentPseudoGTID = currentPseudoGTID;
+    }
+
+    public String getCurrentPseudoGTIDFullQuery() {
+        return currentPseudoGTIDFullQuery;
+    }
+
+    public void setCurrentPseudoGTIDFullQuery(String currentPseudoGTIDFullQuery) {
+        this.currentPseudoGTIDFullQuery = currentPseudoGTIDFullQuery;
     }
 
     public com.booking.replication.pipeline.BinlogPositionInfo getCurrentPosition() {
@@ -67,22 +150,53 @@ public class PipelinePosition {
         this.startPosition = startPosition;
     }
 
-    public void updatePipelineLastMapEventPosition(TableMapEvent event, long fakeMicrosecondCounter) {
+    public String getCurrentReplicantHostName() {
+        return currentReplicantHostName;
+    }
 
+    public void setCurrentReplicantHostName(String currentReplicantHostName) {
+        this.currentReplicantHostName = currentReplicantHostName;
+    }
+
+    public int getCurrentReplicantServerID() {
+        return currentReplicantServerID;
+    }
+
+    public void setCurrentReplicantServerID(int currentReplicantServerID) {
+        this.currentReplicantServerID = currentReplicantServerID;
+    }
+
+    public void updatePipelineLastMapEventPosition(
+        String host,
+        int serverID,
+        TableMapEvent event,
+        long fakeMicrosecondCounter
+    ) {
         if (this.getLastMapEventPosition() == null) {
             this.setLastMapEventPosition(new BinlogPositionInfo(
+                    host,
+                    serverID,
                     event.getBinlogFilename(),
                     event.getHeader().getPosition(),
                     fakeMicrosecondCounter
             ));
         } else {
+            this.getLastMapEventPosition().setHost(host);
+            this.getLastMapEventPosition().setServerID(serverID);
             this.getLastMapEventPosition().setBinlogFilename(getEventBinlogFileName(event));
             this.getLastMapEventPosition().setBinlogPosition(getEventBinlogPosition(event));
             this.getLastMapEventPosition().setFakeMicrosecondsCounter(fakeMicrosecondCounter);
         }
     }
 
-    public void updatCurrentPipelinePosition(BinlogEventV4 event, long fakeMicrosecondCounter) {
+    public void updatCurrentPipelinePosition(
+        String host,
+        int serverID,
+        BinlogEventV4 event,
+        long fakeMicrosecondCounter
+    ) {
+        this.getCurrentPosition().setHost(host);
+        this.getCurrentPosition().setServerID(serverID);
         this.getCurrentPosition().setBinlogFilename(getEventBinlogFileName(event));
         this.getCurrentPosition().setBinlogPosition(getEventBinlogPosition(event));
         this.getCurrentPosition().setFakeMicrosecondsCounter(fakeMicrosecondCounter);

@@ -42,26 +42,32 @@ public class Configuration {
         public String       name;
         public String       username;
         public String       password;
-        public String       host;
+        public List<String> host_pool;
         public int          port        = 3306;
-        public int          server_id   = 1;
-    }
-
-    @JsonDeserialize
-    private PseudoGTIDConfig pgtid;
-
-    private static class PseudoGTIDConfig implements Serializable {
-        public String p_gtid_pattern;
     }
 
 
     @JsonDeserialize
-    private Orchestrator orchestrator;
+    @JsonProperty("mysql_failover")
+    private MySQLFailover mySQLFailover;
 
-    private static class Orchestrator {
-        public String username;
-        public String password;
-        public String url;
+    private static class MySQLFailover {
+
+        @JsonDeserialize
+        public PseudoGTIDConfig pgtid;
+
+        private static class PseudoGTIDConfig implements Serializable {
+            public String p_gtid_pattern;
+        }
+
+        @JsonDeserialize
+        public Orchestrator orchestrator;
+
+        private static class Orchestrator {
+            public String username;
+            public String password;
+            public String url;
+        }
     }
 
     @JsonDeserialize
@@ -216,8 +222,8 @@ public class Configuration {
         if (replication_schema.name == null) {
             throw new RuntimeException("Replication schema name cannot be null.");
         }
-        if (replication_schema.host == null) {
-            throw new RuntimeException("Replication schema host name cannot be null.");
+        if (replication_schema.host_pool == null) {
+            throw new RuntimeException("Replication schema host_pool cannot be null.");
         }
         if (replication_schema.username == null) {
             throw new RuntimeException("Replication schema user name cannot be null.");
@@ -259,12 +265,8 @@ public class Configuration {
         return replication_schema.port;
     }
 
-    public int getReplicantDBServerID() {
-        return replication_schema.server_id;
-    }
-
-    public String getReplicantDBActiveHost() {
-        return this.replication_schema.host;
+    public List<String> getReplicantDBHostPool() {
+        return this.replication_schema.host_pool;
     }
 
     public String getReplicantSchemaName() {
@@ -283,16 +285,20 @@ public class Configuration {
     // =========================================================================
     // Orchestrator config getters
     public String getOrchestratorUserName() {
-        return orchestrator.username;
+        return mySQLFailover.orchestrator.username;
     }
 
     @JsonIgnore
     public String getOrchestratorPassword() {
-        return orchestrator.password;
+        return mySQLFailover.orchestrator.password;
     }
 
     public String getOrchestratorUrl() {
-        return orchestrator.url;
+        return mySQLFailover.orchestrator.url;
+    }
+
+    public MySQLFailover getMySQLFailover() {
+        return  mySQLFailover;
     }
 
     // =========================================================================
@@ -340,7 +346,7 @@ public class Configuration {
     }
 
     public String getpGTIDPattern() {
-        return pgtid.p_gtid_pattern;
+        return mySQLFailover.pgtid.p_gtid_pattern;
     }
 
     /**

@@ -7,12 +7,14 @@ import com.booking.replication.Constants;
 import com.booking.replication.Coordinator;
 import com.booking.replication.Metrics;
 import com.booking.replication.applier.Applier;
-import com.booking.replication.applier.ApplierException;
+import com.booking.replication.applier.HBaseApplier;
+import com.booking.replication.applier.hbase.TaskBufferInconsistencyException;
 import com.booking.replication.augmenter.AugmentedRowsEvent;
 import com.booking.replication.augmenter.AugmentedSchemaChangeEvent;
 import com.booking.replication.augmenter.EventAugmenter;
-import com.booking.replication.checkpoints.LastCommitedPositionCheckpoint;
+import com.booking.replication.checkpoints.LastCommittedPositionCheckpoint;
 import com.booking.replication.queues.ReplicatorQueues;
+import com.booking.replication.replicant.ReplicantPool;
 import com.booking.replication.schema.ActiveSchemaVersion;
 import com.booking.replication.schema.exception.SchemaTransitionException;
 import com.booking.replication.schema.exception.TableMapException;
@@ -50,12 +52,14 @@ import java.util.concurrent.TimeUnit;
  */
 public class PipelineOrchestrator extends Thread {
 
-    public  final  Configuration       configuration;
-    private final  Applier             applier;
-    private final  ReplicatorQueues    queues;
-    private final  QueryInspector      queryInspector;
-    private static EventAugmenter      eventAugmenter;
-    private static ActiveSchemaVersion activeSchemaVersion;
+    public  final  Configuration                   configuration;
+    private final  ReplicantPool                   replicantPool;
+    private final  Applier                         applier;
+    private final  ReplicatorQueues                queues;
+    private final  QueryInspector                  queryInspector;
+    private static EventAugmenter                  eventAugmenter;
+    private static ActiveSchemaVersion             activeSchemaVersion;
+    private static LastCommittedPositionCheckpoint lastVerifiedPseudoGTIDCheckPoint;
 
     public CurrentTransactionMetadata currentTransactionMetadata;
 
@@ -119,13 +123,16 @@ public class PipelineOrchestrator extends Thread {
     }
 
     public PipelineOrchestrator(
-            ReplicatorQueues                  repQueues,
-            PipelinePosition                  pipelinePosition,
-            Configuration                     repcfg,
-            Applier                           applier
-    ) throws SQLException, URISyntaxException {
+            ReplicatorQueues repQueues,
+            PipelinePosition pipelinePosition,
+            Configuration repcfg,
+            Applier applier,
+            ReplicantPool replicantPool) throws SQLException, URISyntaxException {
+
         queues = repQueues;
         configuration = repcfg;
+
+        this.replicantPool = replicantPool;
 
         activeSchemaVersion =  new ActiveSchemaVersion(configuration);
         eventAugmenter = new EventAugmenter(activeSchemaVersion);
@@ -186,7 +193,12 @@ public class PipelineOrchestrator extends Thread {
 
                     // Update pipeline position
                     fakeMicrosecondCounter++;
-                    pipelinePosition.updatCurrentPipelinePosition(event, fakeMicrosecondCounter);
+                    pipelinePosition.updatCurrentPipelinePosition(
+                        replicantPool.getReplicantDBActiveHost(),
+                        replicantPool.getReplicantDBActiveHostServerID(),
+                        event,
+                        fakeMicrosecondCounter
+                    );
 
                     if (! skipEvent(event)) {
                         calculateAndPropagateChanges(event);
@@ -241,7 +253,7 @@ public class PipelineOrchestrator extends Thread {
      * </p>
      */
     public void calculateAndPropagateChanges(BinlogEventV4 event)
-            throws IOException, TableMapException, SchemaTransitionException, ApplierException {
+            throws Exception, TableMapException {
 
         AugmentedRowsEvent augmentedRowsEvent;
 
@@ -270,6 +282,26 @@ public class PipelineOrchestrator extends Thread {
             requestReplicatorShutdown();
         }
 
+        // check if the applier commit stream moved to a new check point. If so,
+        // store the the new safe check point; currently only supported for hbase applier
+        if (applier instanceof HBaseApplier) {
+            LastCommittedPositionCheckpoint lastCommittedPseudoGTIDReportedByApplier =
+                ((HBaseApplier) applier).getLastCommittedPseudGTIDCheckPoint();
+
+            if (lastVerifiedPseudoGTIDCheckPoint == null
+                    && lastCommittedPseudoGTIDReportedByApplier != null) {
+                lastVerifiedPseudoGTIDCheckPoint = lastCommittedPseudoGTIDReportedByApplier;
+            } else if (lastVerifiedPseudoGTIDCheckPoint != null
+                    && lastCommittedPseudoGTIDReportedByApplier != null) {
+                lastVerifiedPseudoGTIDCheckPoint = lastCommittedPseudoGTIDReportedByApplier;
+            }
+
+            if (lastVerifiedPseudoGTIDCheckPoint != null) {
+                LOGGER.info("Save new marker: " + lastVerifiedPseudoGTIDCheckPoint.toJson());
+                Coordinator.saveCheckpointMarker(lastVerifiedPseudoGTIDCheckPoint);
+            }
+        }
+
         // Process Event
         switch (event.getHeader().getEventType()) {
 
@@ -284,6 +316,21 @@ public class PipelineOrchestrator extends Thread {
                     try {
                         String pseudoGTID = queryInspector.extractPseudoGTID(querySQL);
                         pipelinePosition.setCurrentPseudoGTID(pseudoGTID);
+                        pipelinePosition.setCurrentPseudoGTIDFullQuery(querySQL);
+                        if (applier instanceof  HBaseApplier) {
+                            try {
+                                ((HBaseApplier) applier).applyPseudoGTIDEvent(new LastCommittedPositionCheckpoint(
+                                    pipelinePosition.getCurrentPosition().getHost(),
+                                    pipelinePosition.getCurrentPosition().getServerID(),
+                                    pipelinePosition.getCurrentPosition().getBinlogFilename(),
+                                    pipelinePosition.getCurrentPosition().getBinlogPosition(),
+                                    pseudoGTID,
+                                    querySQL
+                                ));
+                            } catch (TaskBufferInconsistencyException e) {
+                                e.printStackTrace();
+                            }
+                        }
                     } catch (QueryInspectorException e) {
                         LOGGER.error("Failed to update pipelinePosition with new pGTID!", e);
                         setRunning(false);
@@ -315,14 +362,17 @@ public class PipelineOrchestrator extends Thread {
 
                         long currentBinlogPosition = event.getHeader().getPosition();
 
-                        String pseudoGTID = pipelinePosition.getCurrentPseudoGTID();
+                        String pseudoGTID          = pipelinePosition.getCurrentPseudoGTID();
+                        String pseudoGTIDFullQuery = pipelinePosition.getCurrentPseudoGTIDFullQuery();
+                        int currentSlaveId         = pipelinePosition.getCurrentPosition().getServerID();
 
-                        int currentSlaveId = configuration.getReplicantDBServerID();
-                        LastCommitedPositionCheckpoint marker = new LastCommitedPositionCheckpoint(
+                        LastCommittedPositionCheckpoint marker = new LastCommittedPositionCheckpoint(
+                                pipelinePosition.getCurrentPosition().getHost(),
                                 currentSlaveId,
                                 currentBinlogFileName,
                                 currentBinlogPosition,
-                                pseudoGTID
+                                pseudoGTID,
+                                pseudoGTIDFullQuery
                         );
 
                         LOGGER.info("Save new marker: " + marker.toJson());
@@ -374,7 +424,12 @@ public class PipelineOrchestrator extends Thread {
 
                     applier.applyTableMapEvent((TableMapEvent) event);
 
-                    this.pipelinePosition.updatePipelineLastMapEventPosition((TableMapEvent) event, fakeMicrosecondCounter);
+                    this.pipelinePosition.updatePipelineLastMapEventPosition(
+                        replicantPool.getReplicantDBActiveHost(),
+                        replicantPool.getReplicantDBActiveHostServerID(),
+                        (TableMapEvent) event,
+                        fakeMicrosecondCounter
+                    );
 
                 } catch (Exception e) {
                     LOGGER.error("Could not execute mapEvent block. Requesting replicator shutdown...", e);
@@ -441,14 +496,17 @@ public class PipelineOrchestrator extends Thread {
                 LOGGER.info("All rows committed for binlog file "
                         + currentBinlogFileName + ", moving to next binlog " + nextBinlogFileName);
 
-                String pseudoGTID = pipelinePosition.getCurrentPseudoGTID();
+                String pseudoGTID          = pipelinePosition.getCurrentPseudoGTID();
+                String pseudoGTIDFullQuery = pipelinePosition.getCurrentPseudoGTIDFullQuery();
+                int currentSlaveId         = pipelinePosition.getCurrentPosition().getServerID();
 
-                int currentSlaveId = configuration.getReplicantDBServerID();
-                LastCommitedPositionCheckpoint marker = new LastCommitedPositionCheckpoint(
+                LastCommittedPositionCheckpoint marker = new LastCommittedPositionCheckpoint(
+                        pipelinePosition.getCurrentPosition().getHost(),
                         currentSlaveId,
                         nextBinlogFileName,
                         currentBinlogPosition,
-                        pseudoGTID
+                        pseudoGTID,
+                        pseudoGTIDFullQuery
                 );
 
                 try {
@@ -500,11 +558,16 @@ public class PipelineOrchestrator extends Thread {
         if (pipelinePosition.getLastSafeCheckPointPosition() != null) {
             if ((pipelinePosition.getLastSafeCheckPointPosition().greaterThan(pipelinePosition.getCurrentPosition()))
                     || (pipelinePosition.getLastSafeCheckPointPosition().equals(pipelinePosition.getCurrentPosition()))) {
-                LOGGER.info("Event position "
+                LOGGER.info("Event position { binlog-filename => "
+                        + pipelinePosition.getCurrentPosition().getBinlogFilename()
+                        + ", binlog-position => "
                         + pipelinePosition.getCurrentPosition().getBinlogPosition()
-                        + " is lower or equal then last safe checkpoint position "
+                        + " } is lower or equal then last safe checkpoint position { "
+                        + " binlog-filename => "
+                        + pipelinePosition.getLastSafeCheckPointPosition().getBinlogFilename()
+                        + ", binlog-position => "
                         + pipelinePosition.getLastSafeCheckPointPosition().getBinlogPosition()
-                        + ". Skipping event...");
+                        + " }. Skipping event...");
                 skipEvent = true;
                 return skipEvent;
             }
