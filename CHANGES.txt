@@ -1,5 +1,18 @@
 Revision history for MySQL-Time-Machine
 
+Release 0.12.1  Date/Time: 2016-09-20
+
+    [MINOR ENHANCEMENTS]
+    - Added suport for configuring pGTID query prefix
+
+    [BUG FIXES]
+    - Fixed url encoding bug for orchestrator API urls
+
+Release 0.12.0  Date/Time: 2016-09-15
+
+    [NEW FEATURES]
+    - Added support for mysql failover based on Orchestrator Pseudo GTIDs
+
 Release 0.11.0  Date/Time: 2016-09-12
 
     [NEW FEATURES]
