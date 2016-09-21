@@ -23,11 +23,15 @@ Bosko Devetak <bosko.devetak@gmail.com>
 # CONTRIBUTORS
 Greg Franklin <a href="https://github.com/gregf1">gregf1</a>
 
-Rares Mirica <a href="https://github.com/mrares">mrares</a>
+Islam Hassan <a href="https://github.com/ishassan">ishassan</a>
 
 Mikhail Dutikov <a href="https://github.com/mikhaildutikov">mikhaildutikov</a>
 
-Islam Hassan <a href="https://github.com/ishassan">ishassan</a>
+Pavel Salimov <a href="https://github.com/chcat">chcat</a> 
+
+Pedro Silva <a href="https://github.com/pedros">pedros</a>
+
+Rares Mirica <a href="https://github.com/mrares">mrares</a>
 
 Raynald Chung <a href="https://github.com/raynald">raynald</a>
 
