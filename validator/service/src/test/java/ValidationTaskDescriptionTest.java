@@ -3,6 +3,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 
@@ -22,6 +23,17 @@ public class ValidationTaskDescriptionTest {
         assertEquals("TypeS", d.getSource().getStorageType());
         assertEquals("KeyT", d.getTarget().getKey().get("id"));
 
+    }
+
+    @Test
+    public void deserializeMap() throws IOException {
+
+        String serialized = "{ \"k1\" : \"v1\", \"k2\" : \"v2\" }";
+
+        ObjectMapper mapper = new ObjectMapper();
+        Map<String,String> map = mapper.readValue(serialized, Map.class);
+
+        assertEquals("v2", map.get("k2"));
     }
 
 }

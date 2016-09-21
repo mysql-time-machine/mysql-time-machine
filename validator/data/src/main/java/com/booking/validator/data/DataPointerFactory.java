@@ -8,7 +8,7 @@ import java.util.Map;
 /**
  * Created by psalimov on 9/15/16.
  */
-public interface DataPointerFactory<K extends Key,V extends Value>  {
+public interface DataPointerFactory  {
 
     class InvalidDataPointerDescription extends RuntimeException {
         public InvalidDataPointerDescription(String message){

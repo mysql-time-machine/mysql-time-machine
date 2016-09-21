@@ -17,9 +17,9 @@ public class DataPointers {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(DataPointers.class);
 
-    private final Map<String, DataPointerFactory<?,?>> factories;
+    private final Map<String, DataPointerFactory> factories;
 
-    public DataPointers(Map<String, DataPointerFactory<?, ?>> factories) {
+    public DataPointers(Map<String, DataPointerFactory> factories) {
         this.factories = factories;
     }
 
