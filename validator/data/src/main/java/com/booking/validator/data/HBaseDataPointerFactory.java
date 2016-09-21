@@ -19,7 +19,7 @@ import java.util.Map;
 /**
  * Created by psalimov on 9/13/16.
  */
-public class HBaseDataPointerFactory implements DataPointerFactory<HBaseKey,HBaseValue> {
+public class HBaseDataPointerFactory implements DataPointerFactory{
 
     private static final Logger LOGGER = LoggerFactory.getLogger(HBaseDataPointerFactory.class);
 

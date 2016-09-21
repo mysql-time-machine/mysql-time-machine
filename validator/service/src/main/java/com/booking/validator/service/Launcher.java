@@ -1,5 +1,6 @@
 package com.booking.validator.service;
 
+import com.booking.validator.data.ConstDataPointerFactory;
 import com.booking.validator.data.DataPointerFactory;
 import com.booking.validator.data.HBaseDataPointerFactory;
 import com.booking.validator.service.protocol.ValidationTaskDescription;
@@ -27,6 +28,7 @@ public class Launcher {
     private static final Logger LOGGER = LoggerFactory.getLogger(Launcher.class);
 
     private static final String HBASE = "hbase";
+    private static final String CONST = "const";
     private static final String MYSQL = "mysql";
     private static final String KAFKA = "kafka";
 
@@ -100,7 +102,7 @@ public class Launcher {
 
     private DataPointers getDataPointers(){
 
-        Map<String, DataPointerFactory<?,?>> knownFactories = new HashMap<>();
+        Map<String, DataPointerFactory> knownFactories = new HashMap<>();
 
         Map<String, List<ValidatorConfiguration.DataSource>> sources = StreamSupport.stream( validatorConfiguration.getDataSources().spliterator(), false )
                 .collect( Collectors.groupingBy( source -> source.getName() ) );
@@ -108,11 +110,12 @@ public class Launcher {
         DataPointerFactory hbaseFactory = getHBaseFactory( sources.getOrDefault( HBASE, Collections.EMPTY_LIST ) );
 
         knownFactories.put(HBASE, hbaseFactory);
+        knownFactories.put(CONST, new ConstDataPointerFactory());
 
         return new DataPointers(knownFactories);
     }
 
-    private DataPointerFactory<?,?> getHBaseFactory( Iterable<ValidatorConfiguration.DataSource> sources ){
+    private DataPointerFactory getHBaseFactory( Iterable<ValidatorConfiguration.DataSource> sources ){
 
         Map<String,Connection> hbaseConnections = new HashMap<>();
 
