@@ -12,6 +12,4 @@ target/
 hs_err_pid*
 dependency-reduced-pom.xml
 .DS_STORE
-/hbase-snapshotter/.ensime
-/hbase-snapshotter/.ensime_cache/
-/hbase-snapshotter/project/.ensime
+*.ensime*
