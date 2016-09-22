@@ -4,8 +4,7 @@ import java.util.NavigableMap
 
 import scala.collection.JavaConversions._
 
-// TODO: replace with scala.util.parsing.json.JSON
-import com.google.gson.{JsonParser,JsonObject};
+import com.google.gson.{JsonParser,JsonObject}; // TODO: replace with scala.util.parsing.json.JSON
 import com.cloudera.spark.hbase.HBaseContext
 import org.apache.hadoop.hbase.HBaseConfiguration
 import org.apache.hadoop.hbase.client._
@@ -19,8 +18,10 @@ import org.apache.spark.sql.{Row, SaveMode}
 import org.apache.spark.sql.hive.HiveContext
 import org.apache.spark.sql.types._
 
-case class Arguments(timestamp: Long = -1, configPath: String = null, hbaseTableName: String = null, hiveTableName: String = null)
+import com.booking.sql.{DataTypeParser,MySQLDataType}
 
+
+case class Arguments(timestamp: Long = -1, configPath: String = null, hbaseTableName: String = null, hiveTableName: String = null)
 case class IllegalFormatException(message: String, cause: Throwable) extends RuntimeException(message, cause)
 
 object HBaseSnapshotter {
@@ -32,9 +33,9 @@ object HBaseSnapshotter {
   type FamilyMap = NavigableMap[Array[Byte], NavigableMap[Array[Byte], NavigableMap[java.lang.Long, Array[Byte]]]]
 
   /**
-   * Parses command line arguments into an Argument object
-   * @param args command line arguments
-   */
+    * Parses command line arguments into an Argument object
+    * @param args command line arguments
+    */
   def parseArguments(args: Array[String]): Arguments = {
     val parser = new scopt.OptionParser[Arguments]("hbase-snapshotter") {
       note("Options:")
@@ -109,32 +110,42 @@ object HBaseSnapshotter {
     if (args.timestamp > -1) scan.setTimeRange(0, args.timestamp)
   }
 
+  def mySQLToSparkSQL(s: String): DataType = {
+    val dt: MySQLDataType = DataTypeParser(s)
+    dt.typename match {
+      case "TINYINT" | "SMALLINT" | "MEDIUMINT" | "INT" | "INTEGER" => IntegerType
+      case "BIGINT" => LongType
+      case "NUMERIC" | "DECIMAL" | "FLOAT" | "DOUBLE" | "REAL" => DoubleType
+      case _ => StringType
+    }
+  }
+
+  def transformSchema(table: String, r: Result): Seq[StructField] = {
+    val k = Bytes.toString(r.getRow())
+    val v = Bytes.toString(r.getFamilyMap(Bytes.toBytes("d")).get(Bytes.toBytes("schemaPostChange")))
+    val o = new JsonParser().parse(v).getAsJsonObject().getAsJsonObject(table)
+    o.getAsJsonObject("columnIndexToNameMap").entrySet().toSeq.map({ x => {
+      val columnIndex: Int = x.getKey().toInt
+      val columnName: String = x.getValue().getAsString()
+      val columnType: String = o.getAsJsonObject("columnsSchema")
+        .getAsJsonObject(columnName)
+        .getAsJsonPrimitive("columnType")
+        .getAsString()
+      (columnIndex, columnName, columnType)
+    }}).sortBy(_._1).map({ x => StructField(x._2, mySQLToSparkSQL(x._3), true) })
+  }
+
   def getSchema(tableName: String): StructType = {
     val filters = new FilterList(
       FilterList.Operator.MUST_PASS_ALL,
       new FirstKeyOnlyFilter()// ,
-      // new KeyOnlyFilter()
+                              // new KeyOnlyFilter()
     )
     val schemaScan = new Scan()
 
     schemaScan.addColumn(Bytes.toBytes("d"), Bytes.toBytes("schemaPostChange"))
     schemaScan.setFilter(filters)
     val rdd = hbc.hbaseRDD("schema_history:dw", schemaScan, { r: (ImmutableBytesWritable, Result) => r._2 })
-
-    def transformSchema(table: String, r: Result): Seq[StructField] = {
-      val k = Bytes.toString(r.getRow())
-      val v = Bytes.toString(r.getFamilyMap(Bytes.toBytes("d")).get(Bytes.toBytes("schemaPostChange")))
-      val o = new JsonParser().parse(v).getAsJsonObject().getAsJsonObject(table)
-      o.getAsJsonObject("columnIndexToNameMap").entrySet().toSeq.map({ x => {
-        val columnIndex: Int = x.getKey().toInt
-        val columnName: String = x.getValue().getAsString()
-        val columnType: String = o.getAsJsonObject("columnsSchema")
-          .getAsJsonObject(columnName)
-          .getAsJsonPrimitive("columnType")
-          .getAsString()
-        (columnIndex, columnName, columnType)
-      }}).sortBy(_._1).map({ x => StructField(x._2, DataTypeParser.parse(x._3), true) })
-    }
 
     StructType(transformSchema(tableName, rdd.first()))
   }
@@ -166,16 +177,16 @@ object HBaseSnapshotter {
   }
 
   /**
-   * Transforms the data in a hashmap into a Row object.
-   * The data of the current HBase row is stored in a hash map. To store them into Hive,
-   * we need to feed them to an object of type Row. The elements should be in the same order
-   * as the columns are written in the schema.
-   *
-   * @param familyMap A hashmap holding the values of the current row.
-   * @param schema a struct that specifies how the schema would look like in Hive table.
-   * @param defaultNull The value to be used in Hive table, if the cell value was missing from the source HBase table.
-   * @return an object of type Row holding the row data.
-   */
+    * Transforms the data in a hashmap into a Row object.
+    * The data of the current HBase row is stored in a hash map. To store them into Hive,
+    * we need to feed them to an object of type Row. The elements should be in the same order
+    * as the columns are written in the schema.
+    *
+    * @param familyMap A hashmap holding the values of the current row.
+    * @param schema a struct that specifies how the schema would look like in Hive table.
+    * @param defaultNull The value to be used in Hive table, if the cell value was missing from the source HBase table.
+    * @return an object of type Row holding the row data.
+    */
   def transformMapToRow(
     familyMap: FamilyMap,
     schema: StructType,
