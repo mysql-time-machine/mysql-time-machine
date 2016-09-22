@@ -1,21 +1,21 @@
-package com.booking.spark
+package com.booking.sql
 
 import scala.language.postfixOps
 import scala.util.matching._
 import scala.util.parsing.combinator._
-import org.apache.spark.sql.types._
 
 case class MySQLPrecision(precision: Int, scale: Option[Int])
-case class MySQLDataType(typename: String, precision: Option[MySQLPrecision], qualifiers: Seq[String])
+case class MySQLDataType(typename: String, precision: Option[MySQLPrecision], qualifiers: Seq[String], attributes: Map[String, String])
 
 object DataTypeParser extends JavaTokenParsers {
 
   val typenames = Seq("MEDIUMBLOB", "MEDIUMTEXT", "MEDIUMINT", "TIMESTAMP", "VARBINARY", "DATETIME", "LONGBLOB", "LONGTEXT", "SMALLINT", "TINYBLOB", "TINYTEXT", "DECIMAL", "INTEGER", "NUMERIC", "TINYINT", "VARCHAR", "BIGINT", "BINARY", "DOUBLE", "FLOAT", "TIME", "BLOB", "CHAR", "DATE", "ENUM", "JSON", "REAL", "TEXT", "YEAR", "BIT", "INT", "SET")
-  val qualifiers = Seq("UNSIGNED", "ZEROFILL", "BINARY", "CHARACTER SET", "COLLATE")
+  val qualifiers = Seq("UNSIGNED", "ZEROFILL", "BINARY")
+  val attributes = Seq("CHARACTER SET", "COLLATE")
 
-  def datatypeSpec: Parser[MySQLDataType] = typename ~ (precision?) ~ (qualifier*) ^^ {
-    case t ~ p ~ Seq(q) => new MySQLDataType(t, p, Seq(q))
-    case t ~ p ~ q => new MySQLDataType(t, p, q)
+  def datatypeSpec: Parser[MySQLDataType] = typename ~ (precision?) ~ (qualifier*) ~ (attribute*) ^^ {
+    case t ~ p ~ Seq(q) ~ a => new MySQLDataType(t, p, Seq(q), a.toMap)
+    case t ~ p ~ q ~ a => new MySQLDataType(t, p, q, a.toMap)
   }
 
   def typename: Parser[String] = makeRegex(typenames, true)
@@ -27,25 +27,31 @@ object DataTypeParser extends JavaTokenParsers {
 
   def qualifier: Parser[String] = makeRegex(qualifiers, true)
 
+  def attribute: Parser[(String, String)] = characterSetName | collationName
+
+  override def stringLiteral: Parser[String] = {
+    ("\'" ~> """([^'\p{Cntrl}\\]|\\[0'"bnrtZ\\%_]|\\u[a-fA-F0-9]{4})*""".r <~ "\'") |
+    ("\"" ~> """([^"\p{Cntrl}\\]|\\[0'"bnrtZ\\%_]|\\u[a-fA-F0-9]{4})*""".r <~ "\"")
+  }
+
+  def characterSetName: Parser[(String, String)] = "CHARACTER SET" ~ stringLiteral ^^ {
+    case a ~ b => (a, b)
+  }
+
+  def collationName: Parser[(String, String)] = "COLLATE" ~ stringLiteral ^^ {
+    case a ~ b => (a, b)
+  }
+
   def makeRegex(tokens: Seq[String], caseInsensitive: Boolean): Regex = {
     val start = if (caseInsensitive) "(?i)" else ""
     (start + tokens.mkString("(", "|", ")")).r
   }
 
-  def apply(exprString: String): DataType = {
+  def apply(exprString: String): MySQLDataType = {
      parseAll(datatypeSpec, exprString) match {
-       case Success(dt, _) => mySQLToSparkSQL(dt)
-       case Failure(msg, _) => NullType
-       case Error(msg, _) => NullType
+       case Success(dt, _) => dt
+       case Failure(msg, _) => sys.error(msg)
+       case Error(msg, _) => sys.error(msg)
      }
-  }
-
-  def mySQLToSparkSQL(dt: MySQLDataType): DataType = {
-    dt.typename match {
-      case "TINYINT" | "SMALLINT" | "MEDIUMINT" | "INT" | "INTEGER" => IntegerType
-      case "BIGINT" => LongType
-      case "NUMERIC" | "DECIMAL" | "FLOAT" | "DOUBLE" | "REAL" => DoubleType
-      case _ => StringType
-    }
   }
 }
