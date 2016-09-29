@@ -1,6 +1,6 @@
 package com.booking.sql;
 
-class Test {
+class Example {
     public static void main(String[] args) {
         MySQLDataType dt = DataTypeParser.apply("INTEGER(10, 2) UNSIGNED ZEROFILL CHARACTER SET \"utf-8\" COLLATE \'latin1_bin\'");
         System.out.println(dt);
