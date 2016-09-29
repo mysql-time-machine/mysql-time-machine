@@ -77,24 +77,6 @@ object HBaseSnapshotter {
     }
   }
 
-  def parseConfig(configPath: String): ConfigParser = {
-    val configParser = new ConfigParser(configPath)
-
-    try {
-      configParser.getZooKeeperQuorum
-      configParser.getSchema
-      configParser.getDefaultNull
-    } catch {
-      case e: Exception =>
-        throw IllegalFormatException(
-          "The yaml config file is not formatted correctly." +
-            "Check readme.md file for more information.",
-          e
-        )
-    }
-    configParser
-  }
-
   def init(args: Arguments, config: ConfigParser): Unit = {
     val conf = new SparkConf()
     conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
@@ -152,7 +134,7 @@ object HBaseSnapshotter {
 
   def main(cmdArgs: Array[String]): Unit = {
     val args = parseArguments(cmdArgs)
-    val config = parseConfig(args.configPath)
+    val config = new ConfigParser(args.configPath)
 
     init(args, config)
 
@@ -165,11 +147,10 @@ object HBaseSnapshotter {
     // Note: familyMap has a custom comparator. The entries are sorted from newest to oldest.
     // map.firstEntry() is the newest entry (with largest timestamp). This is different than the default behaviour
     // of firstEntry() and lastEntry().
-    val defaultNull = config.getDefaultNull
 
     val rowRDD = hbaseRDD.map(hbaseRow => {
       val familyMap = hbaseRow.getMap
-      transformMapToRow(familyMap, schema, defaultNull)
+      transformMapToRow(familyMap, schema)
     })
 
     val dataFrame = hc.createDataFrame(rowRDD, schema)
@@ -184,13 +165,11 @@ object HBaseSnapshotter {
     *
     * @param familyMap A hashmap holding the values of the current row.
     * @param schema a struct that specifies how the schema would look like in Hive table.
-    * @param defaultNull The value to be used in Hive table, if the cell value was missing from the source HBase table.
     * @return an object of type Row holding the row data.
     */
   def transformMapToRow(
     familyMap: FamilyMap,
-    schema: StructType,
-    defaultNull: String
+    schema: StructType
   ): Row = {
 
     Row.fromSeq(for (field: StructField <- schema.fields) yield {
