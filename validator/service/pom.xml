@@ -24,7 +24,7 @@
                 <version>2.4.3</version>
                 <executions>
                     <!-- Run shade goal on package phase -->
-                    <resolver>
+                    <execution>
                         <phase>package</phase>
                         <goals>
                             <goal>shade</goal>
@@ -37,8 +37,16 @@
                                 </resolver>
                             </transformers>
                         </configuration>
-                    </resolver>
+                    </execution>
                 </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>1.8</source>
+                    <target>1.8</target>
+                </configuration>
             </plugin>
         </plugins>
     </build>
