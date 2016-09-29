@@ -4,7 +4,7 @@ import java.util.NavigableMap
 
 import scala.collection.JavaConversions._
 
-import com.google.gson.{JsonParser,JsonObject}; // TODO: replace with scala.util.parsing.json.JSON
+import com.google.gson.{JsonParser,JsonObject};
 import com.cloudera.spark.hbase.HBaseContext
 import org.apache.hadoop.hbase.HBaseConfiguration
 import org.apache.hadoop.hbase.client._
