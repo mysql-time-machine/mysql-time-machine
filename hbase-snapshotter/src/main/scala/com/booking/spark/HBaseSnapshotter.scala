@@ -102,10 +102,8 @@ object HBaseSnapshotter {
     }
   }
 
-  def transformSchema(table: String, r: Result): Seq[StructField] = {
-    val k = Bytes.toString(r.getRow())
-    val v = Bytes.toString(r.getFamilyMap(Bytes.toBytes("d")).get(Bytes.toBytes("schemaPostChange")))
-    val o = new JsonParser().parse(v).getAsJsonObject().getAsJsonObject(table)
+  def transformSchema(table: String, value: String): Seq[StructField] = {
+    val o = new JsonParser().parse(value).getAsJsonObject().getAsJsonObject(table)
     o.getAsJsonObject("columnIndexToNameMap").entrySet().toSeq.map({ x => {
       val columnIndex: Int = x.getKey().toInt
       val columnName: String = x.getValue().getAsString()
@@ -129,7 +127,9 @@ object HBaseSnapshotter {
     schemaScan.setFilter(filters)
     val rdd = hbc.hbaseRDD("schema_history:dw", schemaScan, { r: (ImmutableBytesWritable, Result) => r._2 })
 
-    StructType(transformSchema(tableName, rdd.first()))
+    StructType(transformSchema(tableName,
+      Bytes.toString(result.getFamilyMap(Bytes.toBytes("d")).get(Bytes.toBytes("schemaPostChange")))
+    ))
   }
 
   def main(cmdArgs: Array[String]): Unit = {
