@@ -1,97 +1,77 @@
 package com.booking.spark
 
-import java.util.NavigableMap
+import com.booking.sql.{DataTypeParser, MySQLDataType}
 
+import java.util.NavigableMap
 import scala.collection.JavaConversions._
 
-import com.google.gson.{JsonParser,JsonObject};
+import com.google.gson.{JsonObject, JsonParser}
 import com.cloudera.spark.hbase.HBaseContext
 import org.apache.hadoop.hbase.HBaseConfiguration
-import org.apache.hadoop.hbase.client._
-import org.apache.hadoop.hbase.filter._
+import org.apache.hadoop.hbase.client.{Result, Scan, Get, HTable}
+import org.apache.hadoop.hbase.filter.{FilterList, FirstKeyOnlyFilter, KeyOnlyFilter}
 import org.apache.hadoop.hbase.io.ImmutableBytesWritable
 import org.apache.hadoop.hbase.util.Bytes
 import org.apache.spark.{SparkConf, SparkContext}
-import org.apache.spark.SparkContext._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{Row, SaveMode}
 import org.apache.spark.sql.hive.HiveContext
-import org.apache.spark.sql.types._
-
-import com.booking.sql.{DataTypeParser,MySQLDataType}
-
-
-case class Arguments(timestamp: Long = -1, configPath: String = null, hbaseTableName: String = null, hiveTableName: String = null)
-case class IllegalFormatException(message: String, cause: Throwable) extends RuntimeException(message, cause)
-
-object HBaseSnapshotter {
-  private var hc: HiveContext = null
-  private var hbc: HBaseContext = null
-  private var scan: Scan = null
-
-  //FamilyMap = Map[FamilyName, Map[ColumnName, Map[Timestamp, Value]]]
-  type FamilyMap = NavigableMap[Array[Byte], NavigableMap[Array[Byte], NavigableMap[java.lang.Long, Array[Byte]]]]
-
-  /**
-    * Parses command line arguments into an Argument object
-    * @param args command line arguments
-    */
-  def parseArguments(args: Array[String]): Arguments = {
-    val parser = new scopt.OptionParser[Arguments]("hbase-snapshotter") {
-      note("Options:")
-
-      opt[Long]('t', "timestamp")
-        .valueName("<TIMESTAMP>")
-        .action((timestamp_, c) => c.copy(timestamp = timestamp_))
-        .text("Takes a snapshot of the latest HBase version available before the given timestamp (exclusive). " +
-          "If this option is not specified, the latest timestamp will be used.")
-
-      help("help")
-        .text("Prints this usage text")
-
-      note("\nArguments:")
-
-      arg[String]("<config file>")
-        .action((configPath_, c) => c.copy(configPath = configPath_))
-        .text("The path of a yaml config file.")
-
-      arg[String]("<source table>")
-        .action((hbaseTableName_, c) => c.copy(hbaseTableName = hbaseTableName_))
-        .text("The source HBase table you are copying from. " +
-          "It should be in the format NAMESPACE:TABLENAME")
-
-      arg[String]("<dest table>")
-        .action((hiveTableName_, c) => c.copy(hiveTableName = hiveTableName_))
-        .text("The destination Hive table you are copying to. " +
-          "It should be in the format DATABASE.TABLENAME")
-    }
-
-    parser.parse(args, Arguments()) match {
-      case Some(config) => {
-        config
-      }
-      case None => {
-        System.exit(1)
-        return (Arguments())
-      }
-    }
+import org.apache.spark.sql.types.
+  {
+    StructField,
+    StructType,
+    DataType,
+    DoubleType,
+    IntegerType,
+    LongType,
+    StringType
   }
 
+/**
+  * Spark application that takes a snapshot of an HBase table at a
+  * given point in time and stores it to a Hive table.
+  */
+object HBaseSnapshotter {
+  private var _hc: HiveContext = null
+  private var _hbc: HBaseContext = null
+  private var _args: Arguments = null
+  private var _config: ConfigParser = null
+
+
+  /* Readable type structure returned by the hbase client */
+  private type FamilyName = Array[Byte]
+  private type ColumnName = Array[Byte]
+  private type Timestamp = java.lang.Long
+  private type Value = Array[Byte]
+  private type FamilyMap = NavigableMap[FamilyName, NavigableMap[ColumnName, NavigableMap[Timestamp, Value]]]
+
+
+  /** Initialize HiveContext, HBaseContext, arguments, and configuration options
+    * @param args command line arguments
+    * @param config configuration file options
+    */
   def init(args: Arguments, config: ConfigParser): Unit = {
     val conf = new SparkConf()
     conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
     conf.set("spark.kryoserializer.buffer", "64k")
-    conf.registerKryoClasses(Array(classOf[org.apache.hadoop.hbase.client.Result]))
-    val sc = new SparkContext(conf.setAppName("HBaseSnapshotter"))
-    val hbaseConfig = HBaseConfiguration.create()
+    conf.registerKryoClasses(Array(classOf[Result]))
+    conf.setAppName("HBaseSnapshotter")
 
+    val sc = new SparkContext(conf)
+    val hbaseConfig = HBaseConfiguration.create()
     hbaseConfig.set("hbase.zookeeper.quorum", config.getZooKeeperQuorum())
-    hbc = new HBaseContext(sc, hbaseConfig)
-    hc = new HiveContext(sc)
-    scan = new Scan()
-    if (args.timestamp > -1) scan.setTimeRange(0, args.timestamp)
+
+    _hbc = new HBaseContext(sc, hbaseConfig)
+    _hc = new HiveContext(sc)
+    _args = args
+    _config = config
   }
 
+
+  /** Convert MySQL datatype strings to Spark datatypes
+    * @param MySQL datatype
+    * @return Spark datatype
+    */
   def mySQLToSparkSQL(s: String): DataType = {
     val dt: MySQLDataType = DataTypeParser(s)
     dt.typename match {
