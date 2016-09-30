@@ -91,8 +91,6 @@ object HBaseSnapshotter {
     * @return Spark schema
     */
   def transformSchema(table: String, value: String): StructType = {
-    println(table)
-    println(value)
     val schemaObject = new JsonParser().parse(value)
     val tableSchema = schemaObject.getAsJsonObject().getAsJsonObject(table)
     val columnIndexToNameMap = tableSchema.getAsJsonObject("columnIndexToNameMap")
