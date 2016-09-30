@@ -147,17 +147,13 @@ object HBaseSnapshotter {
     * @param schema a struct that specifies how the schema would look like in Hive table.
     * @return an object of type Row holding the row data.
     */
-  def transformMapToRow(
-    familyMap: FamilyMap,
-    schema: StructType
-  ): Row = {
-
+  def transformMapToRow(familyMap: FamilyMap, schema: StructType): Row = {
     Row.fromSeq(for (field: StructField <- schema.fields) yield {
       try {
         val fieldValue: String = Bytes.toStringBinary(familyMap
           .get(Bytes.toBytes("d"))
           .get(Bytes.toBytes(field.name))
-          .firstEntry().getValue)
+          .lastEntry().getValue)
 
         field.dataType match {
           case IntegerType => fieldValue.toInt
@@ -170,5 +166,22 @@ object HBaseSnapshotter {
         case e: Exception => null
       }
     })
+  }
+
+  def main(cmdArgs: Array[String]): Unit = {
+    val args = ArgumentParser(cmdArgs)
+    val config = new ConfigParser(args.configPath)
+
+    init(args, config)
+
+    val schema: StructType = getSchema(args.mySQLTableName, args.schemaTableName, args.timestamp)
+
+    val scan = new Scan()
+    if (args.timestamp > -1) scan.setTimeRange(0, args.timestamp)
+    val hbaseRDD = _hbc.hbaseRDD(args.hbaseTableName, scan, { r: (ImmutableBytesWritable, Result) => r._2 })
+
+    val rowRDD = hbaseRDD.map({ r => transformMapToRow(r.getMap(), schema) })
+    val dataFrame = _hc.createDataFrame(rowRDD, schema)
+    dataFrame.write.mode(SaveMode.Overwrite).saveAsTable(args.hiveTableName)
   }
 }
