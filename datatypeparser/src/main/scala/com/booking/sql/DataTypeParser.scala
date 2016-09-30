@@ -18,8 +18,8 @@ object DataTypeParser extends JavaTokenParsers {
       case e => new MySQLDataType("ENUM", e, None, Seq(), Map())
     } |
   typename ~ (precision?) ~ (qualifier*) ~ (attribute*) ^^ {
-    case t ~ p ~ Seq(q) ~ a => new MySQLDataType(t, Seq(), p, Seq(q), a.toMap)
-    case t ~ p ~ q ~ a => new MySQLDataType(t, Seq(), p, q, a.toMap)
+    case t ~ p ~ Seq(q) ~ a => new MySQLDataType(t.toUpperCase(), Seq(), p, Seq(q), a.toMap)
+    case t ~ p ~ q ~ a => new MySQLDataType(t.toUpperCase(), Seq(), p, q, a.toMap)
   }
 
   def typename: Parser[String] = makeRegex(typenames, true)
