@@ -5,7 +5,7 @@ import scala.util.matching.Regex
 import scala.util.parsing.combinator.JavaTokenParsers
 
 case class MySQLPrecision(precision: Int, scale: Option[Int])
-case class MySQLDataType(typename: String, precision: Option[MySQLPrecision], qualifiers: Seq[String], attributes: Map[String, String])
+case class MySQLDataType(typename: String, enumeration: Seq[String], precision: Option[MySQLPrecision], qualifiers: Seq[String], attributes: Map[String, String])
 
 object DataTypeParser extends JavaTokenParsers {
 
@@ -13,12 +13,18 @@ object DataTypeParser extends JavaTokenParsers {
   val qualifiers = Seq("UNSIGNED", "ZEROFILL", "BINARY")
   val attributes = Seq("CHARACTER SET", "COLLATE")
 
-  def datatypeSpec: Parser[MySQLDataType] = typename ~ (precision?) ~ (qualifier*) ~ (attribute*) ^^ {
-    case t ~ p ~ Seq(q) ~ a => new MySQLDataType(t, p, Seq(q), a.toMap)
-    case t ~ p ~ q ~ a => new MySQLDataType(t, p, q, a.toMap)
+  def datatypeSpec: Parser[MySQLDataType] =
+    "enum" ~> enumeration ^^ {
+      case e => new MySQLDataType("ENUM", e, None, Seq(), Map())
+    } |
+  typename ~ (precision?) ~ (qualifier*) ~ (attribute*) ^^ {
+    case t ~ p ~ Seq(q) ~ a => new MySQLDataType(t, Seq(), p, Seq(q), a.toMap)
+    case t ~ p ~ q ~ a => new MySQLDataType(t, Seq(), p, q, a.toMap)
   }
 
   def typename: Parser[String] = makeRegex(typenames, true)
+
+  def enumeration: Parser[Seq[String]] = "(" ~> repsep(stringLiteral, ",") <~ ")"
 
   def precision: Parser[MySQLPrecision] = "(" ~> wholeNumber ~ ("," ~> wholeNumber?) <~ ")" ^^ {
     case l ~ Some(d) => new MySQLPrecision(l.toInt, Some(d.toInt))
