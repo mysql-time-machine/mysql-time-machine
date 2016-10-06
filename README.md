@@ -1,3 +1,13 @@
+# Notice
+
+The mysql-time-machine components have been split into
+multi-repos. Please use the following, instead of this repository:
+
+- [Binlog flusher](https://github.com/mysql-time-machine/binlog-flusher)
+- [Replicator](https://github.com/mysql-time-machine/replicator)
+- [HBase snapshotter](https://github.com/mysql-time-machine/hbase-snapshotter)
+- [Datatype parser](https://github.com/mysql-time-machine/datatypeparser)
+
 # MySQL Time Machine
 Collection of services and tools for creating, processing and storing streams of MySQL data changes.
 
@@ -27,7 +37,7 @@ Islam Hassan <a href="https://github.com/ishassan">ishassan</a>
 
 Mikhail Dutikov <a href="https://github.com/mikhaildutikov">mikhaildutikov</a>
 
-Pavel Salimov <a href="https://github.com/chcat">chcat</a> 
+Pavel Salimov <a href="https://github.com/chcat">chcat</a>
 
 Pedro Silva <a href="https://github.com/pedros">pedros</a>
 
@@ -52,4 +62,3 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-
