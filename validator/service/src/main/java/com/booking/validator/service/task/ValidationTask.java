@@ -30,10 +30,8 @@ public class ValidationTask implements Supplier<CompletableFuture<ValidationTask
 
     protected ValidationTaskResult validate(Data sourceData, Data targetData ){
 
-        Data.discrepancy( sourceData,targetData );
+        return new ValidationTaskResult( Data.discrepancy( sourceData,targetData ) );
 
-
-        return new ValidationTaskResult();
     }
 
 }

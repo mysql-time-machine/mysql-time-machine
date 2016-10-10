@@ -1,4 +1,4 @@
-package com.booking.validator.data.storage.hbase;
+package com.booking.validator.data.hbase.storage;
 
 import com.booking.validator.data.storage.Key;
 

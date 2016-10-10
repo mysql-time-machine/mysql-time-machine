@@ -24,7 +24,7 @@ public class Validator implements Service {
         this.errorConsumer = errorConsumer;
     }
 
-
+    @Override
     public void start() {
 
         Arrays.asList(resultConsumer,errorConsumer,taskSupplier).forEach( x -> {if (x instanceof Service) ((Service) x).start();}  );

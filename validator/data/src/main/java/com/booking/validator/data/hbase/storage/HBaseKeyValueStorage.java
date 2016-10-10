@@ -1,8 +1,6 @@
-package com.booking.validator.data.storage.hbase;
+package com.booking.validator.data.hbase.storage;
 
 import com.booking.validator.data.storage.KeyValueStorage;
-import com.booking.validator.data.storage.hbase.HBaseKey;
-import com.booking.validator.data.storage.hbase.HBaseValue;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.client.Get;

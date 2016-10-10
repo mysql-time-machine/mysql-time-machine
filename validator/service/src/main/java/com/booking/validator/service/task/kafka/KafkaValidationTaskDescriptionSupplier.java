@@ -1,12 +1,14 @@
-package com.booking.validator.service.task;
+package com.booking.validator.service.task.kafka;
 
 import com.booking.validator.service.Service;
 import com.booking.validator.service.protocol.ValidationTaskDescription;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.serialization.StringDeserializer;
 
 
+import java.util.Arrays;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Queue;
@@ -20,23 +22,25 @@ import java.util.function.Supplier;
  *
  * Created by psalimov on 9/9/16.
  */
-public class KafkaTaskDescriptionSupplier implements Supplier<ValidationTaskDescription>, Service {
+public class KafkaValidationTaskDescriptionSupplier implements Supplier<ValidationTaskDescription>, Service {
 
     private final KafkaConsumer<String, ValidationTaskDescription> consumer;
 
-    private Queue<ValidationTaskDescription> tasks = new ConcurrentLinkedQueue<>();
+    private final Queue<ValidationTaskDescription> tasks = new ConcurrentLinkedQueue<>();
 
-    private Object lock = new Object();
+    private final Object lock = new Object();
 
-    public static KafkaTaskDescriptionSupplier getInstance(Map<String,Object> configs){
+    public static KafkaValidationTaskDescriptionSupplier getInstance(String topic, Properties properties){
 
-        KafkaConsumer<String, ValidationTaskDescription> consumer = new KafkaConsumer<>( configs );
+        KafkaConsumer<String, ValidationTaskDescription> consumer = new KafkaConsumer<>( properties, new StringDeserializer(), new ValidationTaskDescriptionDeserializer() );
 
-        return new KafkaTaskDescriptionSupplier( consumer );
+        consumer.subscribe( Arrays.asList(topic) );
+
+        return new KafkaValidationTaskDescriptionSupplier( consumer );
 
     }
 
-    public KafkaTaskDescriptionSupplier(KafkaConsumer<String, ValidationTaskDescription> consumer) {
+    public KafkaValidationTaskDescriptionSupplier(KafkaConsumer<String, ValidationTaskDescription> consumer) {
         this.consumer = consumer;
     }
 

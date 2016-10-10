@@ -1,7 +1,13 @@
 package com.booking.validator.service;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.Map;
 
 /**
@@ -42,6 +48,18 @@ public class ValidatorConfiguration {
         public Map<String, String> getConfiguration() {
             return configuration;
         }
+    }
+
+    public static ValidatorConfiguration fromFile(String path) throws IOException {
+
+        ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
+
+        try (InputStream in = Files.newInputStream(Paths.get(path))){
+
+            return mapper.readValue( in , ValidatorConfiguration.class);
+
+        }
+
     }
 
     @JsonProperty("data_sources")

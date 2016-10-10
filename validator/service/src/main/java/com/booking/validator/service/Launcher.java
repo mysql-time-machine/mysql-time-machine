@@ -1,15 +1,16 @@
 package com.booking.validator.service;
 
-import com.booking.validator.data.ConstDataPointerFactory;
+import com.booking.validator.data.constant.ConstDataPointerFactory;
 import com.booking.validator.data.DataPointerFactory;
-import com.booking.validator.data.HBaseDataPointerFactory;
+import com.booking.validator.data.hbase.HBaseDataPointerFactory;
 import com.booking.validator.service.protocol.ValidationTaskDescription;
 import com.booking.validator.service.task.*;
+import com.booking.validator.service.task.cli.CommandLineValidationTaskDescriptionSupplier;
+import com.booking.validator.service.task.kafka.KafkaValidationTaskDescriptionSupplier;
+import com.booking.validator.service.utils.CommandLineArguments;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HBaseConfiguration;
-import org.apache.hadoop.hbase.client.Connection;
-import org.apache.hadoop.hbase.client.ConnectionFactory;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,16 +35,33 @@ public class Launcher {
 
     public static void main(String[] args) {
 
-        ValidatorConfiguration validatorConfiguration = new ValidatorConfiguration();
+        LOGGER.info("Starting validator service...");
 
-        System.out.println("Validator service starting");
+        CommandLineArguments command = new CommandLineArguments(args);
 
-        Launcher launcher = new Launcher(validatorConfiguration);
+        ValidatorConfiguration validatorConfiguration;
 
-        launcher.launch();
+        try {
 
+            validatorConfiguration = ValidatorConfiguration.fromFile( command.getConfigurationPath() );
 
-        System.out.println("Validator service started");
+        } catch (IOException e) {
+
+            LOGGER.error("Failed reading configuration file", e);
+
+            return;
+
+        }
+
+        new Launcher( validatorConfiguration ).launch();
+
+        LOGGER.info("Validator service started.");
+
+        try {
+            for(;;) Thread.sleep(Long.MAX_VALUE);
+        } catch (InterruptedException e) {
+            return;
+        }
 
     }
 
@@ -56,15 +74,7 @@ public class Launcher {
 
     public void launch(){
 
-        Validator validator = new Validator(getTaskSupplier(), getResultConsumer(), getErrorConsumer());
-
-        validator.start();
-
-        try {
-            Thread.sleep(10000);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+        new Validator( getTaskSupplier(), getResultConsumer(), getErrorConsumer() ).start();
 
     }
 
@@ -88,16 +98,22 @@ public class Launcher {
 
         } else {
 
-            supplier = new CommandLineTaskDescriptionSupplier();
+            supplier = new CommandLineValidationTaskDescriptionSupplier();
 
         }
 
         return new TaskSupplier( supplier, getDataPointers() );
     }
 
-    private KafkaTaskDescriptionSupplier getKafkaTaskDescriptionSupplier( Map<String,String> configuration ){
+    private KafkaValidationTaskDescriptionSupplier getKafkaTaskDescriptionSupplier(Map<String,String> configuration ){
 
-        return KafkaTaskDescriptionSupplier.getInstance(null);
+        String topic = configuration.remove("topic");
+
+        Properties properties = new Properties();
+
+        configuration.entrySet().stream().forEach( x -> properties.setProperty(x.getKey(), x.getValue()) );
+
+        return KafkaValidationTaskDescriptionSupplier.getInstance( topic , properties );
     }
 
     private DataPointers getDataPointers(){
@@ -117,27 +133,20 @@ public class Launcher {
 
     private DataPointerFactory getHBaseFactory( Iterable<ValidatorConfiguration.DataSource> sources ){
 
-        Map<String,Connection> hbaseConnections = new HashMap<>();
+        Map<String,Configuration> hbaseConfigurations = StreamSupport.stream( sources.spliterator(), false )
+                .collect( Collectors.toMap(
+                        s -> s.getName(),
+                        s-> {
 
-        for (ValidatorConfiguration.DataSource source : sources ){
+                            Configuration configuration = HBaseConfiguration.create();
 
-            Configuration configuration = HBaseConfiguration.create();
+                            s.getConfiguration().forEach( (key,value) -> configuration.set(key,value) );
 
-            source.getConfiguration().forEach( (key,value) -> configuration.set(key,value) );
+                            return configuration;
 
-            try ( Connection connection = ConnectionFactory.createConnection(configuration)) {
+                        } ) );
 
-                hbaseConnections.put( source.getName(), connection );
-
-            } catch (IOException e) {
-
-                LOGGER.error("Failed to connect to HBase cluster "+ source.getName(), e );
-
-            }
-
-        }
-
-        return new HBaseDataPointerFactory( hbaseConnections );
+        return HBaseDataPointerFactory.getInstance(hbaseConfigurations);
 
     }
 

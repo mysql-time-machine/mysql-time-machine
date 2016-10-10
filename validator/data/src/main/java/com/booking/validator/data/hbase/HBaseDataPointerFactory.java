@@ -1,10 +1,11 @@
-package com.booking.validator.data;
+package com.booking.validator.data.hbase;
 
 
+import com.booking.validator.data.DataPointer;
+import com.booking.validator.data.DataPointerFactory;
 import com.booking.validator.data.storage.KeyValueStorageDataPointer;
-import com.booking.validator.data.storage.hbase.HBaseKey;
-import com.booking.validator.data.storage.hbase.HBaseKeyValueStorage;
-import com.booking.validator.data.storage.hbase.HBaseValue;
+import com.booking.validator.data.hbase.storage.HBaseKey;
+import com.booking.validator.data.hbase.storage.HBaseKeyValueStorage;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.client.ConnectionFactory;
@@ -19,7 +20,7 @@ import java.util.Map;
 /**
  * Created by psalimov on 9/13/16.
  */
-public class HBaseDataPointerFactory implements DataPointerFactory{
+public class HBaseDataPointerFactory implements DataPointerFactory {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(HBaseDataPointerFactory.class);
 

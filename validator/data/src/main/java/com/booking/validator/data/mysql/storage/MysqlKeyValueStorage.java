@@ -1,4 +1,4 @@
-package com.booking.validator.data.storage.mysql;
+package com.booking.validator.data.mysql.storage;
 
 import com.booking.validator.data.storage.KeyValueStorage;
 import org.apache.commons.dbcp2.BasicDataSource;

@@ -5,6 +5,8 @@ package com.booking.validator.service;
  */
 public interface Service {
 
-    void start();
+    default void start() {}
+
+    default void stop() {}
 
 }
